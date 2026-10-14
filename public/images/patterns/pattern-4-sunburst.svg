@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="1000" height="1000">
+  <defs>
+    <radialGradient id="bg4" cx="0%" cy="50%" r="130%">
+      <stop offset="0%" stop-color="#ff7a3d"/>
+      <stop offset="55%" stop-color="#e0237a"/>
+      <stop offset="100%" stop-color="#5a1166"/>
+    </radialGradient>
+    <g id="top4">
+      <polygon points="0,500 1000,500 1000,432" fill="#ffe14d"/>
+      <polygon points="0,500 1000,397 1000,329" fill="#ffc23f"/>
+      <polygon points="0,500 1000,294 1000,226" fill="#fff7e2"/>
+      <polygon points="0,500 1000,191 1000,123" fill="#ff8a5c"/>
+      <polygon points="0,500 1000,88 1000,20" fill="#ffe14d"/>
+      <circle cx="150" cy="467" r="24" fill="#ffffff"/>
+      <circle cx="300" cy="433" r="16" fill="#fff7e2"/>
+      <circle cx="487" cy="388" r="26" fill="#ffffff"/>
+      <circle cx="682" cy="343" r="18" fill="#fff7e2"/>
+      <circle cx="877" cy="298" r="28" fill="#ffffff"/>
+      <path d="M 390 410 l 10 24 l 24 10 l -24 10 l -10 24 l -10 -24 l -24 -10 l 24 -10 z" fill="#fff7e2"/>
+      <path d="M 790 330 l 8 18 l 18 8 l -18 8 l -8 18 l -8 -18 l -18 -8 l 18 -8 z" fill="#ffffff"/>
+    </g>
+  </defs>
+  <rect width="1000" height="1000" fill="url(#bg4)"/>
+  <use href="#top4"/>
+  <use href="#top4" transform="translate(0 1000) scale(1 -1)"/>
+  <circle cx="0" cy="500" r="76" fill="#fff7e2"/>
+  <circle cx="0" cy="500" r="44" fill="#ff5fa8"/>
+  <circle cx="0" cy="500" r="18" fill="#ffe14d"/>
+</svg>

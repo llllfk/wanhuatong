@@ -1,65 +1,94 @@
-# 项目上下文
+# AGENTS.md
+
+## 项目概览
+
+「手势互动万花筒」——给小朋友在 iPad Safari 上使用的全屏网页应用。点击「开始玩耍」授权摄像头后，通过浏览器端手部关键点识别进行互动：
+
+- **握拳**（稳定保持约 0.28s）：切换下一张万花筒图案
+- **张开手掌并左右挥动**：万花筒跟随挥手方向/速度旋转，手离开后惯性减速并保持缓慢自转
+- 视频帧只在本地参与推理，**不上传任何画面**；另有「换一张」大按钮作为手势不可用/演示时的兜底
 
 ### 版本技术栈
 
-- **Framework**: Next.js 16 (App Router)
-- **Core**: React 19
-- **Language**: TypeScript 5
-- **UI 组件**: shadcn/ui (基于 Radix UI)
-- **Styling**: Tailwind CSS 4
+- Framework: Next.js 15.5（App Router；模板原为 Next 16，已按需求降级，勿再升级）
+- Core: React 19 + TypeScript 5（strict）
+- Styling: Tailwind CSS 4（`@import 'tailwindcss'`，主题 token 在 `src/app/globals.css`）
+- 手势: `@mediapipe/tasks-vision` HandLandmarker（WASM + 本地模型，numHands=1，VIDEO 模式）
+- 包管理：**仅 pnpm**
+
+## 常用命令
+
+```bash
+pnpm install        # 安装依赖
+pnpm dev            # 开发（bash scripts/dev.sh，next dev，端口取 $DEPLOY_RUN_PORT，默认 5000）
+pnpm build          # 构建（bash scripts/build.sh：next build + tsup 打包自定义 server）
+pnpm start          # 生产启动（node dist/server.js，端口取 $DEPLOY_RUN_PORT）
+pnpm ts-check       # TypeScript 类型检查
+pnpm lint:build     # ESLint 全量检查
+pnpm lint:style     # Stylelint 检查 CSS
+```
 
 ## 目录结构
 
 ```
-├── public/                 # 静态资源
-├── scripts/                # 构建与启动脚本
-│   ├── build.sh            # 构建脚本
-│   ├── dev.sh              # 开发环境启动脚本
-│   ├── prepare.sh          # 预处理脚本
-│   └── start.sh            # 生产环境启动脚本
-├── src/
-│   ├── app/                # 页面路由与布局
-│   ├── components/ui/      # Shadcn UI 组件库
-│   ├── hooks/              # 自定义 Hooks
-│   ├── lib/                # 工具库
-│   │   └── utils.ts        # 通用工具函数 (cn)
-│   └── server.ts           # 自定义服务端入口
-├── next.config.ts          # Next.js 配置
-├── package.json            # 项目依赖管理
-└── tsconfig.json           # TypeScript 配置
+public/
+├── images/patterns/                 # 6 张预置万花筒图案（SVG，可直接同名替换）
+└── vendor/mediapipe/
+    ├── hand_landmarker.task         # 手部关键点模型（float16，随仓库本地化）
+    └── wasm/                        # tasks-vision WASM 运行时（从 npm 包复制）
+src/
+├── app/
+│   ├── layout.tsx                   # metadata + viewport（zh-CN，禁缩放，viewport-fit=cover）
+│   ├── page.tsx                     # 仅挂载 <KaleidoscopeApp/>（client 入口）
+│   └── globals.css                  # Tailwind + 全部万花筒自定义样式
+├── components/
+│   ├── kaleidoscope-app.tsx         # 主编排：状态机/摄像头生命周期/旋转循环/UI
+│   ├── kaleidoscope-stage.tsx       # 12 切片 CSS 万花筒舞台（forwardRef 暴露旋转层）
+│   └── ui/                          # shadcn/ui（本应用暂未直接使用）
+└── lib/
+    ├── gesture-engine.ts            # HandLandmarker 封装：初始化/GPU→CPU 回退/检测循环/骨架绘制
+    ├── gestures.ts                  # 纯几何手势判定 classifyHand + 时序 GestureTracker
+    ├── patterns.ts                  # 图案清单（替换/新增图案只改这里与 public 目录）
+    └── sound.ts                     # WebAudio 合成「啵」音效（无音频素材）
 ```
 
-- 项目文件（如 app 目录、pages 目录、components 等）默认初始化到 `src/` 目录下。
+## 核心实现约定
 
-## 包管理规范
+### 摄像头与权限（iPad Safari）
 
-**仅允许使用 pnpm** 作为包管理器，**严禁使用 npm 或 yarn**。
-**常用命令**：
-- 安装依赖：`pnpm add <package>`
-- 安装开发依赖：`pnpm add -D <package>`
-- 安装所有依赖：`pnpm install`
-- 移除依赖：`pnpm remove <package>`
+- `getUserMedia` 必须在用户手势调用栈内调用（「开始玩耍」按钮 onClick → `handleStart`），且部署环境必须 HTTPS。
+- `<video>` 必须有 `muted playsInline autoPlay`，否则 iOS 会全屏播放器接管。
+- video 元素在 `starting` 阶段就挂载（引擎 init 前需要 ref），退出/失败时停止所有 MediaStreamTrack。
+- 预览与推理共用同一个 `<video>`；预览 `scaleX(-1)` 镜像，引擎输出的关键点也做了 `x -> 1-x` 镜像，方向一致。
 
-## 开发规范
+### MediaPipe 本地化（无外部运行时依赖）
 
-### 编码规范
+- WASM 路径：`/vendor/mediapipe/wasm`（`FilesetResolver.forVisionTasks`）
+- 模型路径：`/vendor/mediapipe/hand_landmarker.task`
+- 升级 `@mediapipe/tasks-vision` 后必须重新复制 WASM：
+  `cp node_modules/@mediapipe/tasks-vision/wasm/* public/vendor/mediapipe/wasm/`
+- 检测节流约 25fps（`DETECT_INTERVAL_MS=40`），GPU delegate 失败自动回退 CPU。
 
-- 默认按 TypeScript `strict` 心智写代码；优先复用当前作用域已声明的变量、函数、类型和导入，禁止引用未声明标识符或拼错变量名。
-- 禁止隐式 `any` 和 `as any`；函数参数、返回值、解构项、事件对象、`catch` 错误在使用前应有明确类型或先完成类型收窄，并清理未使用的变量和导入。
+### 手势判定
 
-### next.config 配置规范
+- 手指伸直：`dist(指尖, 手腕) > 1.08 * dist(PIP, 手腕)`（朝向无关）；拇指用拇指尖与食指根距离辅助。
+- 张手：≥3 指伸直且拇指张开；握拳：≤1 指伸直；其余为 partial（不触发动作）。
+- 握拳需稳定 280ms 触发一次，900ms 冷却；挥动速度取最近 220ms 掌心（关键点 9）镜像横坐标斜率，限幅 ±2.6/s。
+- 调参位置：`src/lib/gestures.ts`（阈值/时序）、`kaleidoscope-app.tsx` 顶部（`WAVE_GAIN` 等）。
 
-- 配置的路径不要写死绝对路径，必须使用 path.resolve(__dirname, ...)、import.meta.dirname 或 process.cwd() 动态拼接。
+### 万花筒渲染
 
-### Hydration 问题防范
+- 12 等分扇形（每片 30°），`clip-path: polygon(0 50%, 100% 0, 100% 100%)` 裁成三角形，奇数片水平镜像——这是无缝对称的关键，勿改成矩形切片。
+- 旋转通过 rAF 直接写 rotor 的 `transform`（ref 操作，不走 React state）；动画只用 transform/opacity。
+- 图案素材的焦点在左缘中点（即扇形顶点=屏幕中心），沿水平中线上下镜像设计，替换素材时请保持这一构图规则。
 
-1. 严禁在 JSX 渲染逻辑中直接使用 typeof window、Date.now()、Math.random() 等动态数据。**必须使用 'use client' 并配合 useEffect + useState 确保动态内容仅在客户端挂载后渲染**；同时严禁非法 HTML 嵌套（如 <p> 嵌套 <div>）。
-2. **禁止使用 head 标签**，优先使用 metadata，详见文档：https://nextjs.org/docs/app/api-reference/functions/generate-metadata
-   1. 三方 CSS、字体等资源可在 `globals.css` 中顶部通过 `@import` 引入或使用 next/font
-   2. preload, preconnect, dns-prefetch 通过 ReactDOM 的 preload、preconnect、dns-prefetch 方法引入
-   3. json-ld 可阅读 https://nextjs.org/docs/app/guides/json-ld
+## 设计规范
 
-## UI 设计与组件规范 (UI & Styling Standards)
+视觉、字体、动效、禁忌见 `DESIGN.md`。儿童字体 ZCOOL KuaiLe 经 `fonts.googleapis.cn` 在 globals.css 顶部 `@import`。
 
-- 模板默认预装核心组件库 `shadcn/ui`，位于`src/components/ui/`目录下
-- Next.js 项目**必须默认**采用 shadcn/ui 组件、风格和规范，**除非用户指定用其他的组件和规范。**
+## 排障备忘
+
+- 开发/服务日志：`/app/work/logs/bypass/app.log`（`pnpm dev` 输出）
+- iPad 上摄像头黑屏：检查 HTTPS、权限、是否有其他 App 占用；页面内错误提示已按 DOMException 类型分类。
+- 手势不识别：确认光线充足、手完整入镜；骨架点会实时画在预览窗，可据此判断检测是否正常。
+- 沙箱内无头浏览器无法验证摄像头/手势，该链路依赖真机 iPad Safari 验收。

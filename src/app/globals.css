@@ -1,3 +1,4 @@
+@import 'https://fonts.googleapis.cn/css2?family=ZCOOL+KuaiLe&display=swap';
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
@@ -52,6 +53,9 @@
   --font-serif:
     'Noto Serif SC', 'Songti SC', 'SimSun', ui-serif, Georgia, Cambria,
     'Times New Roman', Times, serif;
+  --font-kid:
+    'ZCOOL KuaiLe', 'PingFang SC', 'Hiragino Sans GB', ui-rounded,
+    system-ui, sans-serif;
 }
 
 :root {
@@ -134,4 +138,382 @@
 
 body {
   @apply font-sans;
+}
+
+/* ============ 手势万花筒 · 应用样式 ============ */
+
+html,
+body {
+  height: 100%;
+  background: #160f29;
+  overscroll-behavior: none;
+}
+
+.font-kid {
+  font-family: var(--font-kid);
+}
+
+.kaleido-root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #160f29;
+  /* stylelint-disable-next-line property-no-vendor-prefix */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* ---- 万花筒切片 ---- */
+
+/* 12 等分，每个扇形 30°。切片左侧中点对准屏幕中心，偶数切片镜像翻转。 */
+.kaleido-slice {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 120vmax;
+  height: 64.31vmax; /* 2 * 120vmax * tan(15deg) ≈ 64.31vmax */
+  margin-top: -32.155vmax;
+  transform-origin: 0 50%;
+  overflow: hidden;
+  pointer-events: none;
+
+  /* 裁成真正的扇形三角形（顶点在屏幕中心），避免相邻矩形切片在中心互相覆盖；
+     同时保留 -webkit- 前缀以兼容旧版 Safari */
+  /* stylelint-disable-next-line property-no-vendor-prefix */
+  -webkit-clip-path: polygon(0 50%, 100% 0, 100% 100%);
+  clip-path: polygon(0 50%, 100% 0, 100% 100%);
+}
+
+.kaleido-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  object-position: left center;
+  -webkit-user-drag: none;
+  transform: scaleX(1);
+  transform-origin: left center;
+}
+
+.kaleido-img-mirror {
+  transform: scaleX(-1);
+}
+
+.kaleido-img[src] {
+  animation: kaleido-fade-in 0.45s ease-out both;
+}
+
+@keyframes kaleido-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.kaleido-pop {
+  animation: kaleido-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes kaleido-pop {
+  0% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  35% {
+    transform: scale(1.06);
+    filter: brightness(1.25);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
+/* 镜筒暗角：中心亮、四周深黑紫，强化“凑近万花筒”的观感 */
+.kaleido-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      ellipse at center,
+      transparent 52%,
+      rgb(10 5 24 / 35%) 78%,
+      rgb(10 5 24 / 82%) 100%
+    );
+  box-shadow: inset 0 0 180px rgb(0 0 0 / 65%);
+}
+
+/* ---- 开始页 ---- */
+.start-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 120%, rgb(155 107 255 / 35%), transparent 60%),
+    linear-gradient(160deg, #2a1a55 0%, #160f29 55%, #0e0822 100%);
+}
+
+.start-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(60px);
+  opacity: 0.55;
+}
+
+.start-blob-pink {
+  width: 34vmax;
+  height: 34vmax;
+  left: -8vmax;
+  top: -10vmax;
+  background: #ff5fa8;
+  animation: blob-float 7s ease-in-out infinite;
+}
+
+.start-blob-cyan {
+  width: 28vmax;
+  height: 28vmax;
+  right: -6vmax;
+  bottom: -8vmax;
+  background: #43e7e0;
+  animation: blob-float 9s ease-in-out infinite reverse;
+}
+
+.start-blob-amber {
+  width: 20vmax;
+  height: 20vmax;
+  right: 12vmax;
+  top: 8vmax;
+  background: #ffc23f;
+  opacity: 0.35;
+  animation: blob-float 8s ease-in-out infinite;
+}
+
+@keyframes blob-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(3vmax, 2vmax, 0) scale(1.12);
+  }
+}
+
+.start-button {
+  position: relative;
+  overflow: hidden;
+  height: 96px;
+  padding: 0 72px;
+  border-radius: 9999px;
+  font-family: var(--font-kid);
+  font-size: 40px;
+  color: #4a1d5e;
+  background: linear-gradient(100deg, #ffe066 0%, #ffc23f 30%, #ff8a5c 60%, #ff5fa8 100%);
+  box-shadow:
+    0 18px 45px rgb(255 95 168 / 45%),
+    0 0 0 8px rgb(255 255 255 / 8%),
+    inset 0 -6px 0 rgb(0 0 0 / 8%);
+  animation: start-breathe 2.4s ease-in-out infinite;
+  transition:
+    transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.3s ease;
+}
+
+.start-button:active {
+  transform: scale(0.94);
+}
+
+.start-button-shine {
+  position: absolute;
+  top: 0;
+  left: -80%;
+  width: 55%;
+  height: 100%;
+  background: linear-gradient(
+    100deg,
+    transparent,
+    rgb(255 255 255 / 75%),
+    transparent
+  );
+  transform: skewX(-20deg);
+  animation: button-shine 2.8s ease-in-out infinite;
+}
+
+@keyframes start-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.045);
+  }
+}
+
+@keyframes button-shine {
+  0%,
+  55% {
+    left: -80%;
+  }
+  100% {
+    left: 130%;
+  }
+}
+
+/* ---- 加载圆点 ---- */
+.loading-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  animation: loading-bounce 1s ease-in-out infinite;
+}
+
+.loading-dot-1 {
+  background: #ffc23f;
+}
+
+.loading-dot-2 {
+  background: #ff5fa8;
+  animation-delay: 0.15s;
+}
+
+.loading-dot-3 {
+  background: #43e7e0;
+  animation-delay: 0.3s;
+}
+
+@keyframes loading-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-14px);
+  }
+}
+
+/* ---- 毛玻璃小按钮 ---- */
+.glass-button {
+  display: flex;
+  height: 56px;
+  width: 56px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: #fff7e8;
+  background: rgb(255 255 255 / 16%);
+  border: 1px solid rgb(255 255 255 / 22%);
+  /* stylelint-disable-next-line property-no-vendor-prefix */
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  transition:
+    transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+    background 0.25s ease;
+}
+
+.glass-button:hover {
+  background: rgb(255 255 255 / 28%);
+}
+
+.glass-button:active {
+  transform: scale(0.9);
+}
+
+/* ---- 摄像头预览窗 ---- */
+.camera-preview-wrap {
+  position: absolute;
+  top: max(1rem, env(safe-area-inset-top));
+  right: max(1.25rem, env(safe-area-inset-right));
+  z-index: 20;
+  transition: opacity 0.3s ease;
+}
+
+.camera-preview {
+  position: relative;
+  width: clamp(168px, 24vw, 232px);
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 24px;
+  border: 3px solid rgb(255 255 255 / 75%);
+  background: rgb(20 12 45 / 80%);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 40%);
+}
+
+.camera-preview-video,
+.camera-preview-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.camera-preview-video {
+  transform: scaleX(-1);
+}
+
+/* ---- 手势提示气泡 ---- */
+.gesture-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  border-radius: 9999px;
+  padding: 0.7rem 1.4rem;
+  font-family: var(--font-kid);
+  font-size: 1.15rem;
+  color: #fff7e8;
+  background: rgb(20 12 45 / 55%);
+  border: 1px solid rgb(255 255 255 / 20%);
+  /* stylelint-disable-next-line property-no-vendor-prefix */
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  animation: hint-fade 0.4s ease-out both;
+}
+
+@keyframes hint-fade {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---- 竖屏提示（仅竖屏可见） ---- */
+.rotate-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  text-align: center;
+  background: rgb(14 8 34 / 92%);
+}
+
+@keyframes rotate-hint-spin {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(90deg);
+  }
+}
+
+@media (orientation: portrait) {
+  .rotate-hint {
+    display: flex;
+  }
 }

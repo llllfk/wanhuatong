@@ -1,6 +1,11 @@
-import nextTs from 'eslint-config-next/typescript';
-import nextVitals from 'eslint-config-next/core-web-vitals';
-import { defineConfig, globalIgnores } from 'eslint/config';
+import { FlatCompat } from '@eslint/eslintrc';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+const compat = new FlatCompat({ baseDirectory: __dirname });
 
 const syntaxRules = [
   {
@@ -19,9 +24,8 @@ const nextConfigRestrictedSyntaxRules = [
   },
 ];
 
-const eslintConfig = defineConfig([
-  ...nextVitals,
-  ...nextTs,
+const eslintConfig = [
+  ...compat.extends('next/core-web-vitals', 'next/typescript'),
   {
     settings: {
       // node_modules 里的 barrel 包（lucide-react 等）不参与 ExportMap 构建，
@@ -40,20 +44,23 @@ const eslintConfig = defineConfig([
       'no-restricted-syntax': ['error', ...nextConfigRestrictedSyntaxRules],
     },
   },
-  // Override default ignores of eslint-config-next.
-  globalIgnores([
-    // Default ignores of eslint-config-next (trailing slash prunes the whole
-    // directory instead of walking into it):
-    '.next/',
-    'out/',
-    'build/',
-    'next-env.d.ts',
-    // Build artifacts:
-    'server.js',
-    'dist/',
-    // Script files (CommonJS):
-    'scripts/**/*.js',
-  ]),
-]);
+  {
+    ignores: [
+      // Default ignores of eslint-config-next (trailing slash prunes the whole
+      // directory instead of walking into it):
+      '.next/',
+      'out/',
+      'build/',
+      'next-env.d.ts',
+      // Build artifacts:
+      'server.js',
+      'dist/',
+      // Script files (CommonJS):
+      'scripts/**/*.js',
+      // 本地化的第三方运行时与模型，不参与 lint
+      'public/vendor/**',
+    ],
+  },
+];
 
 export default eslintConfig;

@@ -165,54 +165,21 @@ body {
   touch-action: manipulation;
 }
 
-/* ---- 万花筒切片 ---- */
+/* ---- Canvas 万花筒（视频同款：扇形取样 + 镜像折叠） ---- */
 
-/* 12 等分，每个扇形 30°。切片左侧中点对准屏幕中心，偶数切片镜像翻转。 */
-.kaleido-slice {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 120vmax;
-  height: 64.31vmax; /* 2 * 120vmax * tan(15deg) ≈ 64.31vmax */
-  margin-top: -32.155vmax;
-  transform-origin: 0 50%;
-  overflow: hidden;
-  pointer-events: none;
-
-  /* 裁成真正的扇形三角形（顶点在屏幕中心），避免相邻矩形切片在中心互相覆盖；
-     同时保留 -webkit- 前缀以兼容旧版 Safari */
-  /* stylelint-disable-next-line property-no-vendor-prefix */
-  -webkit-clip-path: polygon(0 50%, 100% 0, 100% 100%);
-  clip-path: polygon(0 50%, 100% 0, 100% 100%);
-}
-
-.kaleido-img {
+.kaleido-stage {
   position: absolute;
   inset: 0;
+  overflow: hidden;
+  background: #05030c;
+}
+
+.kaleido-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
   width: 100%;
   height: 100%;
-  object-fit: fill;
-  object-position: left center;
-  -webkit-user-drag: none;
-  transform: scaleX(1);
-  transform-origin: left center;
-}
-
-.kaleido-img-mirror {
-  transform: scaleX(-1);
-}
-
-.kaleido-img[src] {
-  animation: kaleido-fade-in 0.45s ease-out both;
-}
-
-@keyframes kaleido-fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
 }
 
 .kaleido-pop {
@@ -221,32 +188,28 @@ body {
 
 @keyframes kaleido-pop {
   0% {
-    transform: scale(1);
     filter: brightness(1);
   }
   35% {
-    transform: scale(1.06);
-    filter: brightness(1.25);
+    filter: brightness(1.28);
   }
   100% {
-    transform: scale(1);
     filter: brightness(1);
   }
 }
 
-/* 镜筒暗角：中心亮、四周深黑紫，强化“凑近万花筒”的观感 */
 .kaleido-vignette {
   position: absolute;
   inset: 0;
   pointer-events: none;
   background:
     radial-gradient(
-      ellipse at center,
-      transparent 52%,
-      rgb(10 5 24 / 35%) 78%,
-      rgb(10 5 24 / 82%) 100%
+      circle at center,
+      transparent 42%,
+      rgb(5 3 12 / 22%) 70%,
+      rgb(5 3 12 / 72%) 100%
     );
-  box-shadow: inset 0 0 180px rgb(0 0 0 / 65%);
+  box-shadow: inset 0 0 100px rgb(0 0 0 / 50%);
 }
 
 /* ---- 开始页 ---- */

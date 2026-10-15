@@ -24,13 +24,18 @@ function dist(a: Point, b: Point): number {
  * 判定手指是否伸直：指尖到手腕的距离明显大于指根(PIP)到手腕的距离。
  * 使用相对距离而非 y 坐标，保证手任意朝向都能识别。
  */
-function isFingerExtended(lm: NormalizedLandmark[], tip: number, pip: number): boolean {
+function isFingerExtended(
+  lm: NormalizedLandmark[],
+  tip: number,
+  pip: number,
+  ratio = 1.08,
+): boolean {
   const wrist = lm[0];
   if (!wrist) return false;
   const tipPoint = lm[tip];
   const pipPoint = lm[pip];
   if (!tipPoint || !pipPoint) return false;
-  return dist(tipPoint, wrist) > dist(pipPoint, wrist) * 1.08;
+  return dist(tipPoint, wrist) > dist(pipPoint, wrist) * ratio;
 }
 
 export function isAssignableGesture(kind: GestureKind): kind is AssignableGesture {
@@ -42,43 +47,101 @@ export function isAssignableGesture(kind: GestureKind): kind is AssignableGestur
   );
 }
 
+/** 比耶 ↔ 一指 特别容易抖，切换时需要更长确认 */
+function isAdjacentFlicker(a: GestureKind, b: GestureKind): boolean {
+  return (
+    (a === 'peace' && b === 'point') ||
+    (a === 'point' && b === 'peace')
+  );
+}
+
 /**
- * 根据 21 个手部关键点判定整体手势。
+ * 根据 21 个手部关键点做瞬时判定（无粘滞）。
  */
-export function classifyHand(lm: NormalizedLandmark[] | undefined): GestureKind {
+export function classifyHandRaw(lm: NormalizedLandmark[] | undefined): GestureKind {
   if (!lm || lm.length < 21) return 'none';
 
-  const indexExt = isFingerExtended(lm, 8, 6);
-  const middleExt = isFingerExtended(lm, 12, 10);
-  const ringExt = isFingerExtended(lm, 16, 14);
-  const pinkyExt = isFingerExtended(lm, 20, 18);
+  // 中指用更严阈值，减少「比耶」被误判成「一指」
+  const indexExt = isFingerExtended(lm, 8, 6, 1.08);
+  const middleExt = isFingerExtended(lm, 12, 10, 1.05);
+  const middleClearlyBent = !isFingerExtended(lm, 12, 10, 1.02);
+  const ringExt = isFingerExtended(lm, 16, 14, 1.08);
+  const pinkyExt = isFingerExtended(lm, 20, 18, 1.08);
   const extended = [indexExt, middleExt, ringExt, pinkyExt].filter(Boolean).length;
 
-  // 拇指：拇指尖远离食指指根即视为张开
   const thumbSpread = dist(lm[4], lm[5]) > dist(lm[2], lm[5]) * 1.15;
 
   if (extended >= 3 && thumbSpread) return 'palm';
   if (indexExt && middleExt && !ringExt && !pinkyExt) return 'peace';
-  if (indexExt && !middleExt && !ringExt && !pinkyExt) return 'point';
+  // 一指：中指要明显弯曲，避免比耶抖动时掉进一指
+  if (indexExt && middleClearlyBent && !ringExt && !pinkyExt) return 'point';
   if (extended <= 1) return 'fist';
   return 'partial';
 }
 
 /**
+ * 带粘滞的手势分类：短时抖动不立刻改判，尤其比耶/一指。
+ */
+export class GestureClassifier {
+  private static readonly CONFIRM_MS = 120;
+  private static readonly ADJACENT_CONFIRM_MS = 320;
+
+  private stable: GestureKind = 'none';
+  private candidate: GestureKind = 'none';
+  private candidateSince = 0;
+
+  update(raw: GestureKind, nowMs: number): GestureKind {
+    if (raw === this.stable) {
+      this.candidate = raw;
+      this.candidateSince = nowMs;
+      return this.stable;
+    }
+
+    if (raw !== this.candidate) {
+      this.candidate = raw;
+      this.candidateSince = nowMs;
+      return this.stable;
+    }
+
+    const need = isAdjacentFlicker(this.stable, raw)
+      ? GestureClassifier.ADJACENT_CONFIRM_MS
+      : GestureClassifier.CONFIRM_MS;
+
+    if (nowMs - this.candidateSince >= need) {
+      this.stable = raw;
+    }
+    return this.stable;
+  }
+
+  reset(): void {
+    this.stable = 'none';
+    this.candidate = 'none';
+    this.candidateSince = 0;
+  }
+}
+
+/** @deprecated 保留旧名，内部走瞬时判定；时序粘滞请用 GestureTracker */
+export function classifyHand(lm: NormalizedLandmark[] | undefined): GestureKind {
+  return classifyHandRaw(lm);
+}
+
+/**
  * 手势时序跟踪器：
- * - 可分配手势需稳定保持 TRIGGER_HOLD_MS 才触发一次离散动作；
- * - 触发后进入冷却；
+ * - 粘滞分类，抑制比耶/一指抖动；
+ * - 离散动作：同一次举起只触发一次，需放下（none/partial）后再触发；
  * - 张开手掌时估算挥动速度（用于旋转）。
  */
 export class GestureTracker {
-  private static readonly TRIGGER_HOLD_MS = 280;
-  private static readonly TRIGGER_COOLDOWN_MS = 900;
+  private static readonly TRIGGER_HOLD_MS = 320;
+  private static readonly RELEASE_MS = 180;
   private static readonly WAVE_WINDOW_MS = 220;
   private static readonly MAX_WAVE_SPEED = 2.6;
 
+  private readonly classifier = new GestureClassifier();
   private holdStart: number | null = null;
   private holdKind: AssignableGesture | null = null;
-  private lastTriggerAt = 0;
+  private firedThisHold = false;
+  private releaseStart: number | null = null;
   private palmTrail: Array<{ t: number; x: number }> = [];
 
   /**
@@ -86,7 +149,7 @@ export class GestureTracker {
    *          waveSpeed 为镜像视角水平挥动速度。
    */
   update(
-    kind: GestureKind,
+    rawKind: GestureKind,
     palmX: number | null,
     nowMs: number,
   ): {
@@ -94,25 +157,46 @@ export class GestureTracker {
     waveSpeed: number;
     kind: GestureKind;
   } {
+    const kind = this.classifier.update(rawKind, nowMs);
     let triggered: AssignableGesture | null = null;
 
     if (isAssignableGesture(kind)) {
+      this.releaseStart = null;
+
       if (this.holdKind !== kind) {
-        this.holdKind = kind;
-        this.holdStart = nowMs;
+        // 从一种可分配手势抖到另一种：不立刻当作新一次按下
+        // （避免比耶→一指连触发放大又缩小）
+        if (
+          this.holdKind !== null &&
+          isAdjacentFlicker(this.holdKind, kind) &&
+          this.firedThisHold
+        ) {
+          this.holdKind = kind;
+          // 保持 firedThisHold=true，本次举起不再触发相反动作
+        } else {
+          this.holdKind = kind;
+          this.holdStart = nowMs;
+          this.firedThisHold = false;
+        }
       }
+
       const heldLongEnough =
         this.holdStart !== null &&
         nowMs - this.holdStart >= GestureTracker.TRIGGER_HOLD_MS;
-      const cooledDown =
-        nowMs - this.lastTriggerAt >= GestureTracker.TRIGGER_COOLDOWN_MS;
-      if (heldLongEnough && cooledDown) {
+
+      if (heldLongEnough && !this.firedThisHold) {
         triggered = kind;
-        this.lastTriggerAt = nowMs;
+        this.firedThisHold = true;
       }
     } else {
-      this.holdKind = null;
-      this.holdStart = null;
+      if (this.releaseStart === null) {
+        this.releaseStart = nowMs;
+      }
+      if (nowMs - this.releaseStart >= GestureTracker.RELEASE_MS) {
+        this.holdKind = null;
+        this.holdStart = null;
+        this.firedThisHold = false;
+      }
     }
 
     let waveSpeed = 0;
@@ -140,9 +224,11 @@ export class GestureTracker {
   }
 
   reset(): void {
+    this.classifier.reset();
     this.holdStart = null;
     this.holdKind = null;
-    this.lastTriggerAt = 0;
+    this.firedThisHold = false;
+    this.releaseStart = null;
     this.palmTrail = [];
   }
 }

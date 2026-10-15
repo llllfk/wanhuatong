@@ -11,7 +11,10 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DesignStudio } from './design-studio';
-import { KaleidoscopeStage } from './kaleidoscope-stage';
+import {
+  KaleidoscopeStage,
+  type KaleidoMotion,
+} from './kaleidoscope-stage';
 import {
   createDefaultDesign,
   gestureLabel,
@@ -73,7 +76,7 @@ export function KaleidoscopeApp() {
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
-  const rotorRef = useRef<HTMLDivElement>(null);
+  const motionRef = useRef<KaleidoMotion>({ spin: 0, zoom: 1 });
   const engineRef = useRef<GestureEngine | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const spinRafRef = useRef<number | null>(null);
@@ -192,9 +195,8 @@ export function KaleidoscopeApp() {
         (goal - velocityRef.current) * Math.min(1, dt * ease);
       angleRef.current =
         (angleRef.current + velocityRef.current * dt) % 360;
-      if (rotorRef.current) {
-        rotorRef.current.style.transform = `rotate(${angleRef.current.toFixed(2)}deg)`;
-      }
+      motionRef.current.spin = angleRef.current;
+      motionRef.current.zoom = scale;
       spinRafRef.current = requestAnimationFrame(loop);
     };
     spinRafRef.current = requestAnimationFrame(loop);
@@ -204,7 +206,11 @@ export function KaleidoscopeApp() {
         spinRafRef.current = null;
       }
     };
-  }, [mode, runPhase]);
+  }, [mode, runPhase, scale]);
+
+  useEffect(() => {
+    motionRef.current.zoom = scale;
+  }, [scale]);
 
   const cleanupCamera = useCallback(() => {
     engineRef.current?.stop();
@@ -365,7 +371,7 @@ export function KaleidoscopeApp() {
 
   return (
     <main className="kaleido-root">
-      <KaleidoscopeStage patternSrc={patternSrc} scale={scale} ref={rotorRef} />
+      <KaleidoscopeStage patternSrc={patternSrc} motionRef={motionRef} />
 
       {(runPhase === 'running' || runPhase === 'starting') && (
         <div

@@ -47,7 +47,7 @@ src/
 │   └── globals.css                  # Tailwind + 全部万花筒自定义样式
 ├── components/
 │   ├── kaleidoscope-app.tsx         # 主编排：状态机/摄像头生命周期/旋转循环/UI
-│   ├── kaleidoscope-stage.tsx       # 12 切片 CSS 万花筒舞台（forwardRef 暴露旋转层）
+│   ├── kaleidoscope-stage.tsx       # Canvas 万花筒（扇形取样+镜像折叠，手势驱动纹理）
 │   └── ui/                          # shadcn/ui（本应用暂未直接使用）
 └── lib/
     ├── gesture-engine.ts            # HandLandmarker 封装：初始化/GPU→CPU 回退/检测循环/骨架绘制

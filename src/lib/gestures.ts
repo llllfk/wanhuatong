@@ -4,6 +4,7 @@ import type { AssignableGesture } from './design-config';
 /**
  * 手势 / 姿势类型
  * - fist / palm / peace / point：手部动作
+ * - palmZoom：配置项（识别仍为张手 + 远近），不会由 classify 直接产出
  * - armsUp / armsOut / armUpLeft / armUpRight / handsOnHips：简单身体姿势
  * - partial：半握或不稳定，不触发
  * - none：未识别到可用动作
@@ -45,6 +46,7 @@ export function isAssignableGesture(kind: GestureKind): kind is AssignableGestur
     kind === 'palm' ||
     kind === 'peace' ||
     kind === 'point' ||
+    kind === 'palmZoom' ||
     kind === 'armsUp' ||
     kind === 'armsOut' ||
     kind === 'armUpLeft' ||
@@ -53,7 +55,7 @@ export function isAssignableGesture(kind: GestureKind): kind is AssignableGestur
   );
 }
 
-/** 仅手部可分配手势（不含身体姿势） */
+/** 仅手部静态姿势（可由 classifyHand 直接产出） */
 export function isHandAssignable(kind: GestureKind): boolean {
   return (
     kind === 'fist' ||
@@ -61,6 +63,14 @@ export function isHandAssignable(kind: GestureKind): boolean {
     kind === 'peace' ||
     kind === 'point'
   );
+}
+
+/** 掌心尺度：越大表示手越靠近镜头 */
+export function measurePalmSize(lm: NormalizedLandmark[]): number {
+  const wrist = lm[0];
+  const middle = lm[9];
+  if (!wrist || !middle) return 0;
+  return dist(wrist, middle);
 }
 
 /** 比耶 ↔ 一指 特别容易抖，切换时需要更长确认 */
@@ -151,7 +161,9 @@ export class GestureTracker {
   private static readonly TRIGGER_HOLD_MS = 320;
   private static readonly RELEASE_MS = 180;
   private static readonly WAVE_WINDOW_MS = 220;
+  private static readonly APPROACH_WINDOW_MS = 280;
   private static readonly MAX_WAVE_SPEED = 2.6;
+  private static readonly MAX_APPROACH_SPEED = 1.8;
 
   private readonly classifier = new GestureClassifier();
   private holdStart: number | null = null;
@@ -159,24 +171,28 @@ export class GestureTracker {
   private firedThisHold = false;
   private releaseStart: number | null = null;
   private palmTrail: Array<{ t: number; x: number }> = [];
+  private sizeTrail: Array<{ t: number; size: number }> = [];
 
   /**
    * @returns triggered 为刚完成一次「按下式」触发的手势；
-   *          waveSpeed 为镜像视角水平挥动速度。
+   *          waveSpeed 为镜像视角水平挥动速度；
+   *          approachSpeed 为正表示手靠近镜头（掌心变大）。
    */
   update(
     rawKind: GestureKind,
     palmX: number | null,
     nowMs: number,
+    palmSize: number | null = null,
   ): {
     triggered: AssignableGesture | null;
     waveSpeed: number;
+    approachSpeed: number;
     kind: GestureKind;
   } {
     const kind = this.classifier.update(rawKind, nowMs);
     let triggered: AssignableGesture | null = null;
 
-    if (isAssignableGesture(kind)) {
+    if (isAssignableGesture(kind) && kind !== 'palmZoom') {
       this.releaseStart = null;
 
       if (this.holdKind !== kind) {
@@ -216,6 +232,7 @@ export class GestureTracker {
     }
 
     let waveSpeed = 0;
+    let approachSpeed = 0;
     if (kind === 'palm' && palmX !== null) {
       this.palmTrail.push({ t: nowMs, x: palmX });
       const cutoff = nowMs - GestureTracker.WAVE_WINDOW_MS;
@@ -236,7 +253,27 @@ export class GestureTracker {
       this.palmTrail = [];
     }
 
-    return { triggered, waveSpeed, kind };
+    if (kind === 'palm' && palmSize !== null && palmSize > 0.02) {
+      this.sizeTrail.push({ t: nowMs, size: palmSize });
+      const cutoff = nowMs - GestureTracker.APPROACH_WINDOW_MS;
+      while (this.sizeTrail.length > 2 && (this.sizeTrail[0]?.t ?? 0) < cutoff) {
+        this.sizeTrail.shift();
+      }
+      const first = this.sizeTrail[0];
+      const last = this.sizeTrail[this.sizeTrail.length - 1];
+      if (first && last && last.t - first.t > 50) {
+        const dtSeconds = (last.t - first.t) / 1000;
+        approachSpeed = (last.size - first.size) / dtSeconds;
+        approachSpeed = Math.max(
+          -GestureTracker.MAX_APPROACH_SPEED,
+          Math.min(GestureTracker.MAX_APPROACH_SPEED, approachSpeed),
+        );
+      }
+    } else {
+      this.sizeTrail = [];
+    }
+
+    return { triggered, waveSpeed, approachSpeed, kind };
   }
 
   reset(): void {
@@ -246,5 +283,6 @@ export class GestureTracker {
     this.firedThisHold = false;
     this.releaseStart = null;
     this.palmTrail = [];
+    this.sizeTrail = [];
   }
 }

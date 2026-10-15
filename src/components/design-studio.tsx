@@ -15,11 +15,12 @@ import {
 import { useRef, useState, type ComponentType } from 'react';
 import {
   ACTION_OPTIONS,
-  BODY_POSE_OPTIONS,
-  HAND_GESTURE_OPTIONS,
   actionLabel,
   findGestureConflict,
+  gesturesPhysicallyConflict,
   inferGestureMode,
+  isPalmZoomPair,
+  optionsForAction,
   type AssignableGesture,
   type GestureOptionGroup,
   type PatternAction,
@@ -84,8 +85,6 @@ export function DesignStudio({
 }: DesignStudioProps) {
   const conflict = findGestureConflict(gestures);
   const gestureMode = inferGestureMode(gestures);
-  const activeOptions =
-    gestureMode === 'body' ? BODY_POSE_OPTIONS : HAND_GESTURE_OPTIONS;
   const pattern = patterns[selectedIndex] ?? patterns[0];
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -117,7 +116,7 @@ export function DesignStudio({
                 设计你们的万花筒
               </h1>
               <p className="mt-0.5 font-kid text-base text-white/65 sm:text-lg">
-                左边上传照片，右边配一套手势（所有图共用）；点「运行」表演
+                左边上传照片（本次有效），右边配一套手势；点「运行」表演
               </p>
             </div>
           </div>
@@ -295,41 +294,43 @@ export function DesignStudio({
                           </div>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          {activeOptions.map((gesture) => {
-                            const selected =
-                              gestures[action.id] === gesture.id;
-                            const usedElsewhere =
-                              !selected &&
-                              isGestureUsedByOther(
-                                gestures,
-                                action.id,
-                                gesture.id,
-                              );
-                            return (
-                              <button
-                                key={gesture.id}
-                                type="button"
-                                onClick={() =>
-                                  onChangeMapping(action.id, gesture.id)
-                                }
-                                className={`design-gesture-chip ${
-                                  selected ? 'is-selected' : ''
-                                } ${usedElsewhere ? 'is-swap' : ''}`}
-                              >
-                                <span className="text-2xl leading-none">
-                                  {gesture.emoji}
-                                </span>
-                                <span className="font-kid text-base">
-                                  {gesture.label}
-                                </span>
-                                {usedElsewhere && (
-                                  <span className="text-xs text-amber-100/80">
-                                    对调
+                          {optionsForAction(action.id, gestureMode).map(
+                            (gesture) => {
+                              const selected =
+                                gestures[action.id] === gesture.id;
+                              const usedElsewhere =
+                                !selected &&
+                                isGestureUsedByOther(
+                                  gestures,
+                                  action.id,
+                                  gesture.id,
+                                );
+                              return (
+                                <button
+                                  key={gesture.id}
+                                  type="button"
+                                  onClick={() =>
+                                    onChangeMapping(action.id, gesture.id)
+                                  }
+                                  className={`design-gesture-chip ${
+                                    selected ? 'is-selected' : ''
+                                  } ${usedElsewhere ? 'is-swap' : ''}`}
+                                >
+                                  <span className="text-2xl leading-none">
+                                    {gesture.emoji}
                                   </span>
-                                )}
-                              </button>
-                            );
-                          })}
+                                  <span className="font-kid text-base">
+                                    {gesture.label}
+                                  </span>
+                                  {usedElsewhere && (
+                                    <span className="text-xs text-amber-100/80">
+                                      对调
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            },
+                          )}
                         </div>
                       </div>
                     );
@@ -372,8 +373,18 @@ function isGestureUsedByOther(
   currentAction: PatternAction,
   gesture: AssignableGesture,
 ): boolean {
-  return ACTION_OPTIONS.some(
-    (action) => action.id !== currentAction && map[action.id] === gesture,
-  );
+  return ACTION_OPTIONS.some((action) => {
+    if (action.id === currentAction) return false;
+    // palmZoom 放大/缩小成对：不算「被别处占用」
+    if (
+      gesture === 'palmZoom' &&
+      isPalmZoomPair(map) &&
+      (action.id === 'zoomIn' || action.id === 'zoomOut') &&
+      (currentAction === 'zoomIn' || currentAction === 'zoomOut')
+    ) {
+      return false;
+    }
+    return gesturesPhysicallyConflict(map[action.id], gesture);
+  });
 }
 

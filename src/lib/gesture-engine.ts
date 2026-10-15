@@ -8,6 +8,7 @@ import type { AssignableGesture, GestureOptionGroup } from './design-config';
 import {
   classifyHand,
   GestureTracker,
+  measurePalmSize,
   type GestureKind,
 } from './gestures';
 import { classifyPoseRaw, isBodyPose, POSE_CONNECTIONS } from './poses';
@@ -19,6 +20,8 @@ export interface GestureFrame {
   gesture: EngineGesture;
   /** 镜像视角下的水平挥动速度（屏幕宽度/秒），正为向右 */
   waveSpeed: number;
+  /** 手靠近镜头为正（掌心变大），用于推近放大 / 拉远缩小 */
+  approachSpeed: number;
   /** 本帧是否完成一次离散触发（握拳/举手等保持后触发） */
   triggered: AssignableGesture | null;
   /** 镜像后的手部关键点，用于绘制骨架 */
@@ -193,6 +196,7 @@ export class GestureEngine {
     let handKind: GestureKind = 'none';
     let handLandmarks: NormalizedLandmark[] | null = null;
     let palmX: number | null = null;
+    let palmSize: number | null = null;
 
     if (rawHand) {
       handKind = classifyHand(rawHand);
@@ -201,11 +205,18 @@ export class GestureEngine {
         x: 1 - p.x,
       }));
       palmX = 1 - (rawHand[9]?.x ?? 0.5);
+      palmSize = measurePalmSize(rawHand);
     }
 
-    const tracked = this.tracker.update(handKind, palmX, nowMs);
+    const tracked = this.tracker.update(handKind, palmX, nowMs, palmSize);
     this.drawOverlay(handLandmarks, null, tracked.kind);
-    this.emit(tracked.kind, tracked.waveSpeed, tracked.triggered, handLandmarks);
+    this.emit(
+      tracked.kind,
+      tracked.waveSpeed,
+      tracked.approachSpeed,
+      tracked.triggered,
+      handLandmarks,
+    );
   }
 
   private tickBody(nowMs: number): void {
@@ -234,22 +245,35 @@ export class GestureEngine {
       return;
     }
 
-    const tracked = this.tracker.update(poseKind, null, nowMs);
+    const tracked = this.tracker.update(poseKind, null, nowMs, null);
     this.drawOverlay(null, poseLandmarks, tracked.kind);
-    this.emit(tracked.kind, tracked.waveSpeed, tracked.triggered, null);
+    this.emit(
+      tracked.kind,
+      tracked.waveSpeed,
+      tracked.approachSpeed,
+      tracked.triggered,
+      null,
+    );
   }
 
   private emit(
     gesture: EngineGesture,
     waveSpeed: number,
+    approachSpeed: number,
     triggered: AssignableGesture | null,
     landmarks: NormalizedLandmark[] | null,
   ): void {
-    this.options.onFrame({ gesture, waveSpeed, triggered, landmarks });
+    this.options.onFrame({
+      gesture,
+      waveSpeed,
+      approachSpeed,
+      triggered,
+      landmarks,
+    });
   }
 
   private emitIdle(): void {
-    this.emit('none', 0, null, null);
+    this.emit('none', 0, 0, null, null);
   }
 
   private clearOverlay(): void {

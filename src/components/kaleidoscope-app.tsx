@@ -305,9 +305,19 @@ export function KaleidoscopeApp() {
   const updateMapping = useCallback(
     (patternIdx: number, action: PatternAction, gestureId: AssignableGesture) => {
       setDesign((prev) =>
-        prev.map((item, index) =>
-          index === patternIdx ? { ...item, [action]: gestureId } : item,
-        ),
+        prev.map((item, index) => {
+          if (index !== patternIdx) return item;
+          if (item[action] === gestureId) return item;
+          // 该手势已被别的效果占用时：对调，保证孩子随时能改选
+          const occupiedBy = (
+            ['rotate', 'zoomIn', 'zoomOut', 'next'] as PatternAction[]
+          ).find((key) => key !== action && item[key] === gestureId);
+          const next = { ...item, [action]: gestureId };
+          if (occupiedBy) {
+            next[occupiedBy] = item[action];
+          }
+          return next;
+        }),
       );
     },
     [],

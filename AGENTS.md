@@ -6,9 +6,9 @@
 
 ### 产品流程（客户需求）
 
-1. **设计页**：每张预置图案单独配置手势 → 翻转/旋转、放大、缩小、换下一张（握拳 / 张开手掌 / 比耶 / 一根手指；同张内不重复）
-2. **运行**：点「运行」开摄像头，按**当前图案**自己的映射现场表演；换图后自动换用下一张配置
-3. 配置持久化：`localStorage` key `kaleido-design-v1`（见 `src/lib/design-config.ts`）
+1. **设计页**：自行上传照片；全场共用一套手势/姿势 → 翻转/旋转、放大、缩小、换下一张（握拳 / 张手 / 比耶 / 一指 / 双手举起 / 平举 / 举左/右手 / 叉腰；套内不重复）
+2. **运行**：点「运行」开摄像头，按共用映射表演；放大/缩小为按住渐变
+3. 配置持久化：`localStorage` key `kaleido-design-v2`（手势 + 上传图，见 `src/lib/design-config.ts`）
 
 视频帧只在本地推理，**不上传**；运行页保留「换一张」按钮兜底。
 
@@ -17,7 +17,7 @@
 - Framework: Next.js 15.5（App Router；模板原为 Next 16，已按需求降级，勿再升级）
 - Core: React 19 + TypeScript 5（strict）
 - Styling: Tailwind CSS 4（`@import 'tailwindcss'`，主题 token 在 `src/app/globals.css`）
-- 手势: `@mediapipe/tasks-vision` HandLandmarker（WASM + 本地模型，numHands=1，VIDEO 模式）
+- 手势/姿势: `@mediapipe/tasks-vision` HandLandmarker + PoseLandmarker lite（本地 WASM/模型）
 - 包管理：**仅 pnpm**
 
 ## 常用命令
@@ -36,9 +36,10 @@ pnpm lint:style     # Stylelint 检查 CSS
 
 ```
 public/
-├── images/patterns/                 # 6 张预置万花筒图案（SVG，可直接同名替换）
+├── images/patterns/                 # 可选参考素材（业务默认不预置，靠上传）
 └── vendor/mediapipe/
     ├── hand_landmarker.task         # 手部关键点模型（float16，随仓库本地化）
+    ├── pose_landmarker_lite.task    # 姿态关键点模型（lite）
     └── wasm/                        # tasks-vision WASM 运行时（从 npm 包复制）
 src/
 ├── app/
@@ -50,9 +51,10 @@ src/
 │   ├── kaleidoscope-stage.tsx       # Canvas 万花筒（扇形取样+镜像折叠，手势驱动纹理）
 │   └── ui/                          # shadcn/ui（本应用暂未直接使用）
 └── lib/
-    ├── gesture-engine.ts            # HandLandmarker 封装：初始化/GPU→CPU 回退/检测循环/骨架绘制
-    ├── gestures.ts                  # 纯几何手势判定 classifyHand + 时序 GestureTracker
-    ├── patterns.ts                  # 预置图案 + 上传图压缩（custom 存 localStorage）
+    ├── gesture-engine.ts            # Hand + Pose：初始化/回退/检测/骨架绘制
+    ├── gestures.ts                  # 手势判定 classifyHand + 时序 GestureTracker
+    ├── poses.ts                     # 简单身体姿势（双手举起 / 双臂平举）
+    ├── patterns.ts                  # 上传图压缩（无预置；与手势一并存 localStorage）
     └── sound.ts                     # WebAudio 合成「啵」音效（无音频素材）
 ```
 
@@ -68,23 +70,24 @@ src/
 ### MediaPipe 本地化（无外部运行时依赖）
 
 - WASM 路径：`/vendor/mediapipe/wasm`（`FilesetResolver.forVisionTasks`）
-- 模型路径：`/vendor/mediapipe/hand_landmarker.task`
+- 模型路径：`/vendor/mediapipe/hand_landmarker.task`、`pose_landmarker_lite.task`
 - 升级 `@mediapipe/tasks-vision` 后必须重新复制 WASM：
   `cp node_modules/@mediapipe/tasks-vision/wasm/* public/vendor/mediapipe/wasm/`
-- 检测节流约 25fps（`DETECT_INTERVAL_MS=40`），GPU delegate 失败自动回退 CPU。
+- 检测节流约 25fps（`DETECT_INTERVAL_MS=40`），GPU delegate 失败自动回退 CPU；姿态模型失败时降级为仅手势。
 
-### 手势判定
+### 手势 / 姿势判定
 
 - 手指伸直：`dist(指尖, 手腕) > 1.08 * dist(PIP, 手腕)`（朝向无关）；拇指用拇指尖与食指根距离辅助。
 - 张手：≥3 指伸直且拇指张开；握拳：≤1 指伸直；其余为 partial（不触发动作）。
-- 握拳需稳定 280ms 触发一次，900ms 冷却；挥动速度取最近 220ms 掌心（关键点 9）镜像横坐标斜率，限幅 ±2.6/s。
-- 调参位置：`src/lib/gestures.ts`（阈值/时序）、`kaleidoscope-app.tsx` 顶部（`WAVE_GAIN` 等）。
+- 身体：双手举起、双臂平举、单手举起（左/右）、双手叉腰；清晰手势优先于姿势。
+- 离散动作需稳定保持约 320ms 触发一次；挥动速度取最近 220ms 掌心（关键点 9）镜像横坐标斜率，限幅 ±2.6/s。
+- 调参位置：`src/lib/gestures.ts`、`src/lib/poses.ts`、`kaleidoscope-app.tsx` 顶部（`WAVE_GAIN` 等）。
 
 ### 万花筒渲染
 
 - Canvas 8 扇镜像折叠（相邻扇水平翻转拼成圆），纹理在扇内旋转/缩放；从画面中心取样，适合密铺 SVG 与上传照片。
 - 绘制走 `motionRef` + rAF，不经 React state；动画只用 canvas 变换。
-- 预置图在 `public/images/patterns/`；设计页可上传多张照片（压缩后写入 `kaleido-design-v1`）。
+- 设计页自行上传多张照片（压缩后与共用手势一并写入 `kaleido-design-v2`）。
 
 ## 设计规范
 

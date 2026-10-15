@@ -2,24 +2,17 @@ export interface KaleidoscopePattern {
   src: string;
   /** 无障碍名称 / 提示用语 */
   label: string;
-  /** 是否用户上传（可删除） */
+  /** 是否用户上传（现已全部为上传图） */
   custom?: boolean;
 }
 
 /**
- * 预置万花筒图案：全幅密铺素材，适合 Canvas 扇形镜像取样。
- * 也可在设计页上传自己的照片；替换预置：覆盖 public/images/patterns/ 同名文件。
+ * 不再使用预置图案：孩子在设计页自行上传照片。
+ * public/images/patterns/ 可留作素材参考，业务默认列表为空。
  */
-export const BUILTIN_PATTERNS: KaleidoscopePattern[] = [
-  { src: '/images/patterns/pattern-1-rainbow.svg', label: '彩虹碎钻' },
-  { src: '/images/patterns/pattern-2-candy.svg', label: '糖果花园' },
-  { src: '/images/patterns/pattern-3-bubbles.svg', label: '海底泡泡' },
-  { src: '/images/patterns/pattern-4-sunburst.svg', label: '太阳焰火' },
-  { src: '/images/patterns/pattern-5-gems.svg', label: '星空宝石' },
-  { src: '/images/patterns/pattern-6-petals.svg', label: '春日花瓣' },
-];
+export const BUILTIN_PATTERNS: KaleidoscopePattern[] = [];
 
-/** @deprecated 使用 BUILTIN_PATTERNS；保留别名避免旧引用炸掉 */
+/** @deprecated 使用空列表；保留别名避免旧引用炸掉 */
 export const PATTERNS = BUILTIN_PATTERNS;
 
 const MAX_EDGE = 1024;

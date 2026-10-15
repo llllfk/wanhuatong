@@ -2,10 +2,11 @@ import type { NormalizedLandmark } from '@mediapipe/tasks-vision';
 import type { AssignableGesture } from './design-config';
 
 /**
- * 手势类型
- * - fist / palm / peace / point：可分配给孩子设计的动作
+ * 手势 / 姿势类型
+ * - fist / palm / peace / point：手部动作
+ * - armsUp / armsOut / armUpLeft / armUpRight / handsOnHips：简单身体姿势
  * - partial：半握或不稳定，不触发
- * - none：画面中没有手
+ * - none：未识别到可用动作
  */
 export type GestureKind = AssignableGesture | 'partial' | 'none';
 
@@ -39,6 +40,21 @@ function isFingerExtended(
 }
 
 export function isAssignableGesture(kind: GestureKind): kind is AssignableGesture {
+  return (
+    kind === 'fist' ||
+    kind === 'palm' ||
+    kind === 'peace' ||
+    kind === 'point' ||
+    kind === 'armsUp' ||
+    kind === 'armsOut' ||
+    kind === 'armUpLeft' ||
+    kind === 'armUpRight' ||
+    kind === 'handsOnHips'
+  );
+}
+
+/** 仅手部可分配手势（不含身体姿势） */
+export function isHandAssignable(kind: GestureKind): boolean {
   return (
     kind === 'fist' ||
     kind === 'palm' ||

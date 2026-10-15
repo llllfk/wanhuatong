@@ -1,18 +1,28 @@
-import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
+import {
+  FilesetResolver,
+  HandLandmarker,
+  PoseLandmarker,
+} from '@mediapipe/tasks-vision';
 import type { NormalizedLandmark } from '@mediapipe/tasks-vision';
 import type { AssignableGesture } from './design-config';
-import { classifyHand, GestureTracker, type GestureKind } from './gestures';
+import {
+  classifyHand,
+  GestureTracker,
+  isHandAssignable,
+  type GestureKind,
+} from './gestures';
+import { classifyPoseRaw, isBodyPose, POSE_CONNECTIONS } from './poses';
 
 export type EngineGesture = GestureKind;
 
 export interface GestureFrame {
-  /** 当前稳定手势 */
+  /** 当前稳定手势 / 姿势 */
   gesture: EngineGesture;
   /** 镜像视角下的水平挥动速度（屏幕宽度/秒），正为向右 */
   waveSpeed: number;
-  /** 本帧是否完成一次离散触发（握拳/比耶等保持后触发） */
+  /** 本帧是否完成一次离散触发（握拳/举手等保持后触发） */
   triggered: AssignableGesture | null;
-  /** 镜像后的关键点，用于绘制骨架 */
+  /** 镜像后的手部关键点，用于绘制骨架 */
   landmarks: NormalizedLandmark[] | null;
 }
 
@@ -21,13 +31,15 @@ export interface GestureEngineOptions {
 }
 
 const WASM_PATH = '/vendor/mediapipe/wasm';
-const MODEL_PATH = '/vendor/mediapipe/hand_landmarker.task';
+const HAND_MODEL_PATH = '/vendor/mediapipe/hand_landmarker.task';
+const POSE_MODEL_PATH = '/vendor/mediapipe/pose_landmarker_lite.task';
 const DETECT_INTERVAL_MS = 40;
 
 /**
- * MediaPipe HandLandmarker 封装：
+ * MediaPipe 手部 + 简易姿态封装：
  * - 模型与 WASM 均从本站 /vendor/mediapipe 加载，摄像头画面不出设备；
  * - GPU 委托失败时自动回退 CPU；
+ * - 清晰手势优先，否则采用身体姿势（双手举起 / 双臂平举）；
  * - 输出坐标统一做镜像翻转，与自拍预览画面方向一致。
  */
 export class GestureEngine {
@@ -36,7 +48,8 @@ export class GestureEngine {
   private readonly options: GestureEngineOptions;
   private readonly tracker = new GestureTracker();
 
-  private landmarker: HandLandmarker | null = null;
+  private handLandmarker: HandLandmarker | null = null;
+  private poseLandmarker: PoseLandmarker | null = null;
   private rafId: number | null = null;
   private lastDetectAt = 0;
   private stopped = false;
@@ -54,9 +67,9 @@ export class GestureEngine {
   async init(): Promise<void> {
     const vision = await FilesetResolver.forVisionTasks(WASM_PATH);
 
-    const createOptions = {
+    const handOptions = {
       baseOptions: {
-        modelAssetPath: MODEL_PATH,
+        modelAssetPath: HAND_MODEL_PATH,
         delegate: 'GPU' as const,
       },
       runningMode: 'VIDEO' as const,
@@ -66,19 +79,52 @@ export class GestureEngine {
       minTrackingConfidence: 0.5,
     };
 
+    const poseOptions = {
+      baseOptions: {
+        modelAssetPath: POSE_MODEL_PATH,
+        delegate: 'GPU' as const,
+      },
+      runningMode: 'VIDEO' as const,
+      numPoses: 1,
+      minPoseDetectionConfidence: 0.5,
+      minPosePresenceConfidence: 0.5,
+      minTrackingConfidence: 0.5,
+    };
+
     try {
-      this.landmarker = await HandLandmarker.createFromOptions(vision, createOptions);
+      this.handLandmarker = await HandLandmarker.createFromOptions(
+        vision,
+        handOptions,
+      );
     } catch (gpuError) {
-      console.warn('[GestureEngine] GPU 委托初始化失败，回退 CPU：', gpuError);
-      this.landmarker = await HandLandmarker.createFromOptions(vision, {
-        ...createOptions,
-        baseOptions: { ...createOptions.baseOptions, delegate: 'CPU' },
+      console.warn('[GestureEngine] 手部 GPU 失败，回退 CPU：', gpuError);
+      this.handLandmarker = await HandLandmarker.createFromOptions(vision, {
+        ...handOptions,
+        baseOptions: { ...handOptions.baseOptions, delegate: 'CPU' },
       });
+    }
+
+    try {
+      this.poseLandmarker = await PoseLandmarker.createFromOptions(
+        vision,
+        poseOptions,
+      );
+    } catch (gpuError) {
+      console.warn('[GestureEngine] 姿态 GPU 失败，回退 CPU：', gpuError);
+      try {
+        this.poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+          ...poseOptions,
+          baseOptions: { ...poseOptions.baseOptions, delegate: 'CPU' },
+        });
+      } catch (cpuError) {
+        console.warn('[GestureEngine] 姿态模型不可用，仅用手势：', cpuError);
+        this.poseLandmarker = null;
+      }
     }
   }
 
   start(): void {
-    if (this.landmarker === null) {
+    if (this.handLandmarker === null) {
       throw new Error('GestureEngine 尚未初始化');
     }
     this.stopped = false;
@@ -97,15 +143,17 @@ export class GestureEngine {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
     }
-    this.landmarker?.close();
-    this.landmarker = null;
+    this.handLandmarker?.close();
+    this.handLandmarker = null;
+    this.poseLandmarker?.close();
+    this.poseLandmarker = null;
     this.tracker.reset();
     this.clearOverlay();
   }
 
   private tick(): void {
-    const landmarker = this.landmarker;
-    if (!landmarker || this.video.readyState < 2) {
+    const hand = this.handLandmarker;
+    if (!hand || this.video.readyState < 2) {
       this.emitIdle();
       return;
     }
@@ -116,34 +164,60 @@ export class GestureEngine {
     }
     this.lastDetectAt = nowMs;
 
-    let result;
+    let handResult;
     try {
-      result = landmarker.detectForVideo(this.video, nowMs);
+      handResult = hand.detectForVideo(this.video, nowMs);
     } catch (error) {
-      console.warn('[GestureEngine] 检测失败：', error);
+      console.warn('[GestureEngine] 手部检测失败：', error);
       this.emitIdle();
       return;
     }
 
-    const rawLandmarks = result.landmarks[0];
-    if (!rawLandmarks) {
-      this.tracker.update('none', null, nowMs);
-      this.clearOverlay();
-      this.emit('none', 0, null, null);
-      return;
+    let poseLandmarks: NormalizedLandmark[] | null = null;
+    let poseKind: GestureKind = 'none';
+    if (this.poseLandmarker) {
+      try {
+        const poseResult = this.poseLandmarker.detectForVideo(
+          this.video,
+          nowMs,
+        );
+        const rawPose = poseResult.landmarks[0];
+        if (rawPose) {
+          poseKind = classifyPoseRaw(rawPose);
+          poseLandmarks = rawPose.map((p) => ({
+            ...p,
+            x: 1 - p.x,
+          }));
+        }
+      } catch (error) {
+        console.warn('[GestureEngine] 姿态检测失败：', error);
+      }
     }
 
-    const landmarks: NormalizedLandmark[] = rawLandmarks.map((p) => ({
-      ...p,
-      x: 1 - p.x,
-    }));
+    const rawHand = handResult.landmarks[0];
+    let handKind: GestureKind = 'none';
+    let handLandmarks: NormalizedLandmark[] | null = null;
+    let palmX: number | null = null;
 
-    const kind = classifyHand(rawLandmarks);
-    const palmX = 1 - (rawLandmarks[9]?.x ?? 0.5);
-    const tracked = this.tracker.update(kind, palmX, nowMs);
+    if (rawHand) {
+      handKind = classifyHand(rawHand);
+      handLandmarks = rawHand.map((p) => ({
+        ...p,
+        x: 1 - p.x,
+      }));
+      palmX = 1 - (rawHand[9]?.x ?? 0.5);
+    }
 
-    this.drawOverlay(landmarks, kind);
-    this.emit(tracked.kind, tracked.waveSpeed, tracked.triggered, landmarks);
+    // 清晰手势优先；否则用身体姿势
+    const rawKind: GestureKind = isHandAssignable(handKind)
+      ? handKind
+      : isBodyPose(poseKind)
+        ? poseKind
+        : handKind;
+
+    const tracked = this.tracker.update(rawKind, palmX, nowMs);
+    this.drawOverlay(handLandmarks, poseLandmarks, tracked.kind);
+    this.emit(tracked.kind, tracked.waveSpeed, tracked.triggered, handLandmarks);
   }
 
   private emit(
@@ -164,7 +238,11 @@ export class GestureEngine {
     ctx?.clearRect(0, 0, this.overlay.width, this.overlay.height);
   }
 
-  private drawOverlay(landmarks: NormalizedLandmark[], kind: EngineGesture): void {
+  private drawOverlay(
+    handLandmarks: NormalizedLandmark[] | null,
+    poseLandmarks: NormalizedLandmark[] | null,
+    kind: EngineGesture,
+  ): void {
     const canvas = this.overlay;
     const videoWidth = this.video.videoWidth;
     const videoHeight = this.video.videoHeight;
@@ -177,6 +255,44 @@ export class GestureEngine {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (poseLandmarks && (isBodyPose(kind) || !handLandmarks)) {
+      const poseColor =
+        kind === 'armsUp'
+          ? '#fbbf24'
+          : kind === 'armsOut'
+            ? '#34d399'
+            : kind === 'armUpLeft'
+              ? '#60a5fa'
+              : kind === 'armUpRight'
+                ? '#c084fc'
+                : kind === 'handsOnHips'
+                  ? '#fb923c'
+                  : '#94a3b8';
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = poseColor;
+      ctx.fillStyle = poseColor;
+      ctx.shadowColor = poseColor;
+      ctx.shadowBlur = 6;
+      for (const [a, b] of POSE_CONNECTIONS) {
+        const pa = poseLandmarks[a];
+        const pb = poseLandmarks[b];
+        if (!pa || !pb) continue;
+        ctx.beginPath();
+        ctx.moveTo(pa.x * canvas.width, pa.y * canvas.height);
+        ctx.lineTo(pb.x * canvas.width, pb.y * canvas.height);
+        ctx.stroke();
+      }
+      for (const idx of [11, 12, 13, 14, 15, 16, 23, 24]) {
+        const p = poseLandmarks[idx];
+        if (!p) continue;
+        ctx.beginPath();
+        ctx.arc(p.x * canvas.width, p.y * canvas.height, 6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    if (!handLandmarks) return;
 
     const color =
       kind === 'fist'
@@ -197,15 +313,15 @@ export class GestureEngine {
 
     for (const pair of HAND_CONNECTIONS) {
       const [a, b] = pair;
-      const pa = landmarks[a];
-      const pb = landmarks[b];
+      const pa = handLandmarks[a];
+      const pb = handLandmarks[b];
       if (!pa || !pb) continue;
       ctx.beginPath();
       ctx.moveTo(pa.x * canvas.width, pa.y * canvas.height);
       ctx.lineTo(pb.x * canvas.width, pb.y * canvas.height);
       ctx.stroke();
     }
-    for (const p of landmarks) {
+    for (const p of handLandmarks) {
       ctx.beginPath();
       ctx.arc(p.x * canvas.width, p.y * canvas.height, 5, 0, Math.PI * 2);
       ctx.fill();

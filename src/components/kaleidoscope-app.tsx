@@ -18,19 +18,19 @@ import {
   type KaleidoMotion,
 } from './kaleidoscope-stage';
 import {
-  createDefaultDesign,
-  defaultMapForIndex,
+  createDefaultGestures,
+  createGesturesForMode,
+  gestureGroupOf,
   gestureLabel,
-  loadDesign,
-  resizeDesign,
-  saveDesign,
+  loadStudio,
+  saveStudio,
   type AssignableGesture,
-  type DesignConfig,
+  type GestureOptionGroup,
   type PatternAction,
+  type PatternGestureMap,
 } from '@/lib/design-config';
 import { GestureEngine, type EngineGesture } from '@/lib/gesture-engine';
 import {
-  BUILTIN_PATTERNS,
   compressImageFile,
   type KaleidoscopePattern,
 } from '@/lib/patterns';
@@ -50,7 +50,8 @@ const IDLE_SPIN_SPEED = 10;
 const HOLD_SPIN_SPEED = 90;
 const MIN_SCALE = 0.55;
 const MAX_SCALE = 1.85;
-const SCALE_STEP = 0.18;
+/** 按住放大/缩小时每秒缩放变化量（持续渐变） */
+const ZOOM_SPEED = 0.32;
 
 function friendlyError(error: unknown): string {
   if (error instanceof DOMException) {
@@ -69,11 +70,9 @@ function friendlyError(error: unknown): string {
 
 export function KaleidoscopeApp() {
   const [mode, setMode] = useState<AppMode>('design');
-  const [patterns, setPatterns] = useState<KaleidoscopePattern[]>(() => [
-    ...BUILTIN_PATTERNS,
-  ]);
-  const [design, setDesign] = useState<DesignConfig>(() =>
-    createDefaultDesign(BUILTIN_PATTERNS.length),
+  const [patterns, setPatterns] = useState<KaleidoscopePattern[]>([]);
+  const [gestures, setGestures] = useState<PatternGestureMap>(() =>
+    createDefaultGestures(),
   );
   const [designPatternIndex, setDesignPatternIndex] = useState(0);
   const [hydrated, setHydrated] = useState(false);
@@ -81,7 +80,6 @@ export function KaleidoscopeApp() {
   const [runPhase, setRunPhase] = useState<RunPhase>('starting');
   const [errorMessage, setErrorMessage] = useState('');
   const [patternIndex, setPatternIndex] = useState(0);
-  const [scale, setScale] = useState(1);
   const [muted, setMuted] = useState(false);
   const [showPreview, setShowPreview] = useState(true);
   const [hintVisible, setHintVisible] = useState(true);
@@ -97,19 +95,21 @@ export function KaleidoscopeApp() {
   const velocityRef = useRef(IDLE_SPIN_SPEED);
   const targetVelocityRef = useRef(IDLE_SPIN_SPEED);
   const rotatingRef = useRef(false);
+  const scaleRef = useRef(1);
+  /** 1=持续放大，-1=持续缩小，0=停 */
+  const zoomDirRef = useRef<-1 | 0 | 1>(0);
   const lastGestureRef = useRef<EngineGesture>('none');
   const runPhaseRef = useRef<RunPhase>('starting');
-  const designRef = useRef(design);
+  const gesturesRef = useRef(gestures);
   const patternIndexRef = useRef(patternIndex);
   const patternsLenRef = useRef(patterns.length);
 
-  const patternSrc =
-    patterns[patternIndex]?.src ?? patterns[0]?.src ?? BUILTIN_PATTERNS[0].src;
-  const currentMap = design[patternIndex] ?? design[0];
+  const patternSrc = patterns[patternIndex]?.src ?? patterns[0]?.src ?? '';
+  const currentMap = gestures;
 
   useEffect(() => {
-    designRef.current = design;
-  }, [design]);
+    gesturesRef.current = gestures;
+  }, [gestures]);
 
   useEffect(() => {
     patternIndexRef.current = patternIndex;
@@ -120,28 +120,26 @@ export function KaleidoscopeApp() {
   }, [patterns.length]);
 
   useEffect(() => {
-    setDesign(loadDesign(BUILTIN_PATTERNS.length));
+    const studio = loadStudio();
+    setGestures(studio.gestures);
+    setPatterns(studio.patterns);
+    setDesignPatternIndex(0);
     setHydrated(true);
   }, []);
 
   useEffect(() => {
     if (!hydrated) return;
-    saveDesign(design);
-  }, [design, hydrated]);
+    saveStudio(gestures, patterns);
+  }, [gestures, patterns, hydrated]);
 
   const nextPattern = useCallback(() => {
     const len = Math.max(1, patternsLenRef.current);
     setPatternIndex((index) => (index + 1) % len);
-    setScale(1);
+    scaleRef.current = 1;
+    motionRef.current.zoom = 1;
+    zoomDirRef.current = 0;
     playPop();
     velocityRef.current += 80;
-  }, []);
-
-  const bumpScale = useCallback((delta: number) => {
-    setScale((value) =>
-      Math.max(MIN_SCALE, Math.min(MAX_SCALE, Number((value + delta).toFixed(2)))),
-    );
-    playPop();
   }, []);
 
   const handleFrame = useCallback(
@@ -150,9 +148,7 @@ export function KaleidoscopeApp() {
       waveSpeed: number;
       triggered: AssignableGesture | null;
     }) => {
-      const map =
-        designRef.current[patternIndexRef.current] ?? designRef.current[0];
-      if (!map) return;
+      const map = gesturesRef.current;
 
       const isRotateGesture = frame.gesture === map.rotate;
       rotatingRef.current = isRotateGesture;
@@ -173,14 +169,17 @@ export function KaleidoscopeApp() {
         }
       }
 
+      // 放大/缩小：按住手势持续渐变，松开即停
+      if (frame.gesture === map.zoomIn) {
+        zoomDirRef.current = 1;
+      } else if (frame.gesture === map.zoomOut) {
+        zoomDirRef.current = -1;
+      } else {
+        zoomDirRef.current = 0;
+      }
+
       if (frame.triggered) {
-        if (frame.triggered === map.zoomIn) {
-          bumpScale(SCALE_STEP);
-          setBadgeText(`${gestureLabel(frame.triggered)} · 放大`);
-        } else if (frame.triggered === map.zoomOut) {
-          bumpScale(-SCALE_STEP);
-          setBadgeText(`${gestureLabel(frame.triggered)} · 缩小`);
-        } else if (frame.triggered === map.next) {
+        if (frame.triggered === map.next) {
           nextPattern();
           setBadgeText(`${gestureLabel(frame.triggered)} · 换图`);
         } else if (frame.triggered === map.rotate && map.rotate !== 'palm') {
@@ -194,10 +193,16 @@ export function KaleidoscopeApp() {
         lastGestureRef.current = frame.gesture;
         if (isRotateGesture && frame.gesture !== 'none') {
           setBadgeText(`${gestureLabel(map.rotate)} · 旋转中`);
+        } else if (frame.gesture === map.zoomIn) {
+          setBadgeText(`${gestureLabel(map.zoomIn)} · 放大中`);
+          playPop();
+        } else if (frame.gesture === map.zoomOut) {
+          setBadgeText(`${gestureLabel(map.zoomOut)} · 缩小中`);
+          playPop();
         }
       }
     },
-    [bumpScale, nextPattern],
+    [nextPattern],
   );
 
   useEffect(() => {
@@ -216,7 +221,19 @@ export function KaleidoscopeApp() {
       angleRef.current =
         (angleRef.current + velocityRef.current * dt) % 360;
       motionRef.current.spin = angleRef.current;
-      motionRef.current.zoom = scale;
+
+      if (zoomDirRef.current !== 0) {
+        const next = Math.max(
+          MIN_SCALE,
+          Math.min(
+            MAX_SCALE,
+            scaleRef.current + zoomDirRef.current * ZOOM_SPEED * dt,
+          ),
+        );
+        scaleRef.current = next;
+      }
+      motionRef.current.zoom = scaleRef.current;
+
       spinRafRef.current = requestAnimationFrame(loop);
     };
     spinRafRef.current = requestAnimationFrame(loop);
@@ -226,11 +243,7 @@ export function KaleidoscopeApp() {
         spinRafRef.current = null;
       }
     };
-  }, [mode, runPhase, scale]);
-
-  useEffect(() => {
-    motionRef.current.zoom = scale;
-  }, [scale]);
+  }, [mode, runPhase]);
 
   const cleanupCamera = useCallback(() => {
     engineRef.current?.stop();
@@ -249,7 +262,9 @@ export function KaleidoscopeApp() {
     setRunPhase('starting');
     setErrorMessage('');
     setPatternIndex(0);
-    setScale(1);
+    scaleRef.current = 1;
+    motionRef.current.zoom = 1;
+    zoomDirRef.current = 0;
     setHintVisible(true);
     setBadgeText(null);
     initSound();
@@ -329,24 +344,27 @@ export function KaleidoscopeApp() {
   }, []);
 
   const updateMapping = useCallback(
-    (patternIdx: number, action: PatternAction, gestureId: AssignableGesture) => {
-      setDesign((prev) =>
-        prev.map((item, index) => {
-          if (index !== patternIdx) return item;
-          if (item[action] === gestureId) return item;
-          const occupiedBy = (
-            ['rotate', 'zoomIn', 'zoomOut', 'next'] as PatternAction[]
-          ).find((key) => key !== action && item[key] === gestureId);
-          const next = { ...item, [action]: gestureId };
-          if (occupiedBy) {
-            next[occupiedBy] = item[action];
-          }
-          return next;
-        }),
-      );
+    (action: PatternAction, gestureId: AssignableGesture) => {
+      setGestures((prev) => {
+        const mode = gestureGroupOf(prev.rotate);
+        if (gestureGroupOf(gestureId) !== mode) return prev;
+        if (prev[action] === gestureId) return prev;
+        const occupiedBy = (
+          ['rotate', 'zoomIn', 'zoomOut', 'next'] as PatternAction[]
+        ).find((key) => key !== action && prev[key] === gestureId);
+        const next = { ...prev, [action]: gestureId };
+        if (occupiedBy) {
+          next[occupiedBy] = prev[action];
+        }
+        return next;
+      });
     },
     [],
   );
+
+  const changeGestureMode = useCallback((mode: GestureOptionGroup) => {
+    setGestures(createGesturesForMode(mode));
+  }, []);
 
   const handleAddPatterns = useCallback(async (files: FileList | File[]) => {
     const list = Array.from(files).filter((file) =>
@@ -364,42 +382,32 @@ export function KaleidoscopeApp() {
     }
     if (added.length === 0) return;
     setPatterns((prev) => [...prev, ...added]);
-    setDesign((prev) => {
-      const next = [...prev];
-      for (let i = 0; i < added.length; i += 1) {
-        next.push(defaultMapForIndex(prev.length + i));
-      }
-      return next;
-    });
     setDesignPatternIndex(startIndex);
   }, []);
 
   const handleRemovePattern = useCallback((index: number) => {
     setPatterns((prev) => {
-      const target = prev[index];
-      if (!target?.custom || prev.length <= 1) return prev;
+      if (!prev[index] || prev.length === 0) return prev;
       const nextPatterns = prev.filter((_, i) => i !== index);
-      setDesign((maps) => {
-        if (maps.length !== prev.length) return maps;
-        return maps.filter((_, i) => i !== index);
-      });
       setDesignPatternIndex((current) => {
+        if (nextPatterns.length === 0) return 0;
         if (current === index) return Math.max(0, index - 1);
         if (current > index) return current - 1;
-        return current;
+        return Math.min(current, nextPatterns.length - 1);
       });
       setPatternIndex((current) => {
+        if (nextPatterns.length === 0) return 0;
         if (current === index) return Math.max(0, index - 1);
         if (current > index) return current - 1;
-        return current;
+        return Math.min(current, nextPatterns.length - 1);
       });
       return nextPatterns;
     });
   }, []);
 
   const handleResetDesign = useCallback(() => {
-    setPatterns([...BUILTIN_PATTERNS]);
-    setDesign(createDefaultDesign(BUILTIN_PATTERNS.length));
+    setPatterns([]);
+    setGestures(createDefaultGestures());
     setDesignPatternIndex(0);
   }, []);
 
@@ -421,14 +429,16 @@ export function KaleidoscopeApp() {
       <main className="kaleido-root">
         <DesignStudio
           patterns={patterns}
-          config={design}
+          gestures={gestures}
           selectedIndex={designPatternIndex}
           onSelectPattern={setDesignPatternIndex}
           onChangeMapping={updateMapping}
+          onChangeGestureMode={changeGestureMode}
           onAddPatterns={handleAddPatterns}
           onRemovePattern={handleRemovePattern}
           onReset={handleResetDesign}
           onRun={() => {
+            if (patterns.length === 0) return;
             void startRun();
           }}
         />
@@ -527,7 +537,7 @@ export function KaleidoscopeApp() {
               <div className="gesture-hint max-w-3xl text-center">
                 <Hand className="size-6 shrink-0" />
                 <span>
-                  本张：{gestureLabel(currentMap.rotate)}转 ·{' '}
+                  共用：{gestureLabel(currentMap.rotate)}转 ·{' '}
                   {gestureLabel(currentMap.zoomIn)}放大 ·{' '}
                   {gestureLabel(currentMap.zoomOut)}缩小 ·{' '}
                   {gestureLabel(currentMap.next)}换图

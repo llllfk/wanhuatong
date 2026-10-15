@@ -123,11 +123,11 @@ export function KaleidoscopeStage({
           ctx.closePath();
           ctx.clip();
 
-          // 纹理在扇形内旋转/缩放（镜子不动）
+          // 纹理在扇形内旋转/缩放（镜子不动）；从画面中心取样，照片/密铺图效果更接近视频
           ctx.rotate(spinRad);
           ctx.drawImage(
             img,
-            -baseW * 0.12 + driftX,
+            -baseW * 0.5 + driftX,
             -baseH * 0.5 + driftY,
             baseW,
             baseH,

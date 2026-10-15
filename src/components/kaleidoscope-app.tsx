@@ -17,15 +17,21 @@ import {
 } from './kaleidoscope-stage';
 import {
   createDefaultDesign,
+  defaultMapForIndex,
   gestureLabel,
   loadDesign,
+  resizeDesign,
   saveDesign,
   type AssignableGesture,
   type DesignConfig,
   type PatternAction,
 } from '@/lib/design-config';
 import { GestureEngine, type EngineGesture } from '@/lib/gesture-engine';
-import { PATTERNS } from '@/lib/patterns';
+import {
+  BUILTIN_PATTERNS,
+  compressImageFile,
+  type KaleidoscopePattern,
+} from '@/lib/patterns';
 import {
   initSound,
   isSoundMuted,
@@ -61,7 +67,12 @@ function friendlyError(error: unknown): string {
 
 export function KaleidoscopeApp() {
   const [mode, setMode] = useState<AppMode>('design');
-  const [design, setDesign] = useState<DesignConfig>(() => createDefaultDesign());
+  const [patterns, setPatterns] = useState<KaleidoscopePattern[]>(() => [
+    ...BUILTIN_PATTERNS,
+  ]);
+  const [design, setDesign] = useState<DesignConfig>(() =>
+    createDefaultDesign(BUILTIN_PATTERNS.length),
+  );
   const [designPatternIndex, setDesignPatternIndex] = useState(0);
   const [hydrated, setHydrated] = useState(false);
 
@@ -88,8 +99,10 @@ export function KaleidoscopeApp() {
   const runPhaseRef = useRef<RunPhase>('starting');
   const designRef = useRef(design);
   const patternIndexRef = useRef(patternIndex);
+  const patternsLenRef = useRef(patterns.length);
 
-  const patternSrc = PATTERNS[patternIndex]?.src ?? PATTERNS[0].src;
+  const patternSrc =
+    patterns[patternIndex]?.src ?? patterns[0]?.src ?? BUILTIN_PATTERNS[0].src;
   const currentMap = design[patternIndex] ?? design[0];
 
   useEffect(() => {
@@ -101,7 +114,11 @@ export function KaleidoscopeApp() {
   }, [patternIndex]);
 
   useEffect(() => {
-    setDesign(loadDesign());
+    patternsLenRef.current = patterns.length;
+  }, [patterns.length]);
+
+  useEffect(() => {
+    setDesign(loadDesign(BUILTIN_PATTERNS.length));
     setHydrated(true);
   }, []);
 
@@ -111,7 +128,8 @@ export function KaleidoscopeApp() {
   }, [design, hydrated]);
 
   const nextPattern = useCallback(() => {
-    setPatternIndex((index) => (index + 1) % PATTERNS.length);
+    const len = Math.max(1, patternsLenRef.current);
+    setPatternIndex((index) => (index + 1) % len);
     setScale(1);
     playPop();
     velocityRef.current += 180;
@@ -314,7 +332,6 @@ export function KaleidoscopeApp() {
         prev.map((item, index) => {
           if (index !== patternIdx) return item;
           if (item[action] === gestureId) return item;
-          // 该手势已被别的效果占用时：对调，保证孩子随时能改选
           const occupiedBy = (
             ['rotate', 'zoomIn', 'zoomOut', 'next'] as PatternAction[]
           ).find((key) => key !== action && item[key] === gestureId);
@@ -328,6 +345,61 @@ export function KaleidoscopeApp() {
     },
     [],
   );
+
+  const handleAddPatterns = useCallback(async (files: FileList | File[]) => {
+    const list = Array.from(files).filter((file) =>
+      file.type.startsWith('image/'),
+    );
+    if (list.length === 0) return;
+    const startIndex = patternsLenRef.current;
+    const added: KaleidoscopePattern[] = [];
+    for (let i = 0; i < list.length; i += 1) {
+      try {
+        added.push(await compressImageFile(list[i], startIndex + i + 1));
+      } catch (error) {
+        console.warn('[Kaleidoscope] 图片处理失败：', error);
+      }
+    }
+    if (added.length === 0) return;
+    setPatterns((prev) => [...prev, ...added]);
+    setDesign((prev) => {
+      const next = [...prev];
+      for (let i = 0; i < added.length; i += 1) {
+        next.push(defaultMapForIndex(prev.length + i));
+      }
+      return next;
+    });
+    setDesignPatternIndex(startIndex);
+  }, []);
+
+  const handleRemovePattern = useCallback((index: number) => {
+    setPatterns((prev) => {
+      const target = prev[index];
+      if (!target?.custom || prev.length <= 1) return prev;
+      const nextPatterns = prev.filter((_, i) => i !== index);
+      setDesign((maps) => {
+        if (maps.length !== prev.length) return maps;
+        return maps.filter((_, i) => i !== index);
+      });
+      setDesignPatternIndex((current) => {
+        if (current === index) return Math.max(0, index - 1);
+        if (current > index) return current - 1;
+        return current;
+      });
+      setPatternIndex((current) => {
+        if (current === index) return Math.max(0, index - 1);
+        if (current > index) return current - 1;
+        return current;
+      });
+      return nextPatterns;
+    });
+  }, []);
+
+  const handleResetDesign = useCallback(() => {
+    setPatterns([...BUILTIN_PATTERNS]);
+    setDesign(createDefaultDesign(BUILTIN_PATTERNS.length));
+    setDesignPatternIndex(0);
+  }, []);
 
   useEffect(() => {
     setSoundMuted(isSoundMuted());
@@ -352,11 +424,14 @@ export function KaleidoscopeApp() {
     return (
       <main className="kaleido-root">
         <DesignStudio
+          patterns={patterns}
           config={design}
           selectedIndex={designPatternIndex}
           onSelectPattern={setDesignPatternIndex}
           onChangeMapping={updateMapping}
-          onReset={() => setDesign(createDefaultDesign())}
+          onAddPatterns={handleAddPatterns}
+          onRemovePattern={handleRemovePattern}
+          onReset={handleResetDesign}
           onRun={() => {
             void startRun();
           }}
@@ -450,9 +525,9 @@ export function KaleidoscopeApp() {
               </div>
             )}
             <div className="flex items-center gap-2.5">
-              {PATTERNS.map((pattern, index) => (
+              {patterns.map((pattern, index) => (
                 <span
-                  key={pattern.src}
+                  key={`${pattern.src.slice(0, 48)}-${index}`}
                   aria-label={`第 ${index + 1} 张图案`}
                   className={`h-3 rounded-full transition-all duration-300 ${
                     index === patternIndex

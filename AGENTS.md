@@ -52,7 +52,7 @@ src/
 └── lib/
     ├── gesture-engine.ts            # HandLandmarker 封装：初始化/GPU→CPU 回退/检测循环/骨架绘制
     ├── gestures.ts                  # 纯几何手势判定 classifyHand + 时序 GestureTracker
-    ├── patterns.ts                  # 图案清单（替换/新增图案只改这里与 public 目录）
+    ├── patterns.ts                  # 预置图案 + 上传图压缩（custom 存 localStorage）
     └── sound.ts                     # WebAudio 合成「啵」音效（无音频素材）
 ```
 
@@ -82,9 +82,9 @@ src/
 
 ### 万花筒渲染
 
-- 12 等分扇形（每片 30°），`clip-path: polygon(0 50%, 100% 0, 100% 100%)` 裁成三角形，奇数片水平镜像——这是无缝对称的关键，勿改成矩形切片。
-- 旋转通过 rAF 直接写 rotor 的 `transform`（ref 操作，不走 React state）；动画只用 transform/opacity。
-- 图案素材的焦点在左缘中点（即扇形顶点=屏幕中心），沿水平中线上下镜像设计，替换素材时请保持这一构图规则。
+- Canvas 8 扇镜像折叠（相邻扇水平翻转拼成圆），纹理在扇内旋转/缩放；从画面中心取样，适合密铺 SVG 与上传照片。
+- 绘制走 `motionRef` + rAF，不经 React state；动画只用 canvas 变换。
+- 预置图在 `public/images/patterns/`；设计页可上传多张照片（压缩后写入 `kaleido-design-v1`）。
 
 ## 设计规范
 

@@ -1,4 +1,4 @@
-import { PATTERNS } from './patterns';
+import { BUILTIN_PATTERNS } from './patterns';
 
 /** 孩子可选用的手势（写进设计页选项） */
 export type AssignableGesture = 'fist' | 'palm' | 'peace' | 'point';
@@ -52,22 +52,44 @@ function cloneMap(map: PatternGestureMap): PatternGestureMap {
   return { ...map };
 }
 
-/** 为每张图案生成默认可编辑配置（各张略有不同，方便课堂示范） */
-export function createDefaultDesign(): DesignConfig {
-  return PATTERNS.map((_, index) =>
-    cloneMap(DEFAULT_PRESETS[index % DEFAULT_PRESETS.length]),
+export function defaultMapForIndex(index: number): PatternGestureMap {
+  return cloneMap(DEFAULT_PRESETS[index % DEFAULT_PRESETS.length]);
+}
+
+/** 为指定数量的图案生成默认可编辑配置 */
+export function createDefaultDesign(
+  count: number = BUILTIN_PATTERNS.length,
+): DesignConfig {
+  return Array.from({ length: Math.max(1, count) }, (_, index) =>
+    defaultMapForIndex(index),
   );
 }
 
-export function loadDesign(): DesignConfig {
-  const fallback = createDefaultDesign();
+/** 把配置长度对齐到图案数量（多裁少补） */
+export function resizeDesign(
+  config: DesignConfig,
+  count: number,
+): DesignConfig {
+  if (config.length === count) return config;
+  if (config.length > count) return config.slice(0, count);
+  const next = [...config];
+  while (next.length < count) {
+    next.push(defaultMapForIndex(next.length));
+  }
+  return next;
+}
+
+export function loadDesign(
+  count: number = BUILTIN_PATTERNS.length,
+): DesignConfig {
+  const fallback = createDefaultDesign(count);
   if (typeof window === 'undefined') return fallback;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return fallback;
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return fallback;
-    return PATTERNS.map((_, index) => {
+    return Array.from({ length: count }, (_, index) => {
       const item = parsed[index] as Partial<PatternGestureMap> | undefined;
       const base = fallback[index];
       return {

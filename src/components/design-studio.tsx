@@ -1,6 +1,7 @@
 'use client';
 
-import { Check, Play, RotateCcw, Sparkles } from 'lucide-react';
+import { Check, ImagePlus, Play, RotateCcw, Sparkles, Trash2 } from 'lucide-react';
+import { useRef, useState } from 'react';
 import {
   ACTION_OPTIONS,
   GESTURE_OPTIONS,
@@ -11,9 +12,10 @@ import {
   type PatternAction,
   type PatternGestureMap,
 } from '@/lib/design-config';
-import { PATTERNS } from '@/lib/patterns';
+import type { KaleidoscopePattern } from '@/lib/patterns';
 
 interface DesignStudioProps {
+  patterns: KaleidoscopePattern[];
   config: DesignConfig;
   selectedIndex: number;
   onSelectPattern: (index: number) => void;
@@ -22,21 +24,41 @@ interface DesignStudioProps {
     action: PatternAction,
     gesture: AssignableGesture,
   ) => void;
+  onAddPatterns: (files: FileList | File[]) => Promise<void> | void;
+  onRemovePattern: (index: number) => void;
   onReset: () => void;
   onRun: () => void;
 }
 
 export function DesignStudio({
+  patterns,
   config,
   selectedIndex,
   onSelectPattern,
   onChangeMapping,
+  onAddPatterns,
+  onRemovePattern,
   onReset,
   onRun,
 }: DesignStudioProps) {
   const map = config[selectedIndex] ?? config[0];
   const conflict = map ? findGestureConflict(map) : null;
-  const pattern = PATTERNS[selectedIndex] ?? PATTERNS[0];
+  const pattern = patterns[selectedIndex] ?? patterns[0];
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const handleFiles = async (
+    list: FileList | null,
+  ): Promise<void> => {
+    if (!list || list.length === 0) return;
+    setUploading(true);
+    try {
+      await onAddPatterns(list);
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
 
   return (
     <div className="design-studio">
@@ -54,7 +76,7 @@ export function DesignStudio({
                 设计你们的万花筒
               </h1>
               <p className="mt-0.5 font-kid text-base text-white/65 sm:text-lg">
-                左边选样式，右边选手势；每张可配不一样，配好点「运行」表演
+                左边选/上传样式，右边选手势；配好点「运行」表演
               </p>
             </div>
           </div>
@@ -64,7 +86,9 @@ export function DesignStudio({
           <aside className="design-split-left" aria-label="选择万花筒样式">
             <div className="design-section-title is-left">
               <span className="font-kid text-xl text-amber-200">① 选择样式</span>
-              <span className="text-sm text-white/55">点哪张就设计哪张</span>
+              <span className="text-sm text-white/55">
+                可上传照片，镜子会把它折成万花筒
+              </span>
             </div>
 
             <div className="design-style-preview is-aside">
@@ -78,16 +102,52 @@ export function DesignStudio({
                 <p className="font-kid text-xl text-white sm:text-2xl">
                   第 {selectedIndex + 1} 张 · {pattern?.label}
                 </p>
-                <p className="text-sm text-white/55">当前正在设计这张</p>
+                <p className="text-sm text-white/55">
+                  共 {patterns.length} 张
+                  {pattern?.custom ? ' · 上传' : ' · 预置'}
+                </p>
               </div>
             </div>
 
+            <div className="design-upload-row">
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(event) => {
+                  void handleFiles(event.target.files);
+                }}
+              />
+              <button
+                type="button"
+                className="design-upload-btn"
+                disabled={uploading}
+                onClick={() => fileRef.current?.click()}
+              >
+                <ImagePlus className="size-5" />
+                {uploading ? '正在加入…' : '上传多张图片'}
+              </button>
+              {pattern?.custom && (
+                <button
+                  type="button"
+                  className="design-remove-btn"
+                  onClick={() => onRemovePattern(selectedIndex)}
+                  aria-label="删除这张上传图片"
+                >
+                  <Trash2 className="size-5" />
+                  删除
+                </button>
+              )}
+            </div>
+
             <div className="design-pattern-grid is-aside">
-              {PATTERNS.map((item, index) => {
+              {patterns.map((item, index) => {
                 const active = index === selectedIndex;
                 return (
                   <button
-                    key={item.src}
+                    key={`${item.src.slice(0, 48)}-${index}`}
                     type="button"
                     onClick={() => onSelectPattern(index)}
                     aria-pressed={active}
@@ -194,7 +254,7 @@ export function DesignStudio({
         <button
           type="button"
           onClick={onRun}
-          disabled={Boolean(conflict)}
+          disabled={Boolean(conflict) || patterns.length === 0}
           className="design-run-btn"
         >
           <Play className="size-8 fill-current" />

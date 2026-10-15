@@ -5,13 +5,22 @@ import {
   Hand,
   RotateCcw,
   SkipForward,
-  Sparkles,
   Volume2,
   VolumeX,
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { DesignStudio } from './design-studio';
 import { KaleidoscopeStage } from './kaleidoscope-stage';
+import {
+  createDefaultDesign,
+  gestureLabel,
+  loadDesign,
+  saveDesign,
+  type AssignableGesture,
+  type DesignConfig,
+  type PatternAction,
+} from '@/lib/design-config';
 import { GestureEngine, type EngineGesture } from '@/lib/gesture-engine';
 import { PATTERNS } from '@/lib/patterns';
 import {
@@ -21,11 +30,16 @@ import {
   setSoundMuted,
 } from '@/lib/sound';
 
-type Phase = 'idle' | 'starting' | 'running' | 'error';
+type AppMode = 'design' | 'run';
+type RunPhase = 'starting' | 'running' | 'error';
 
-const WAVE_GAIN = 1100; // 挥动速度 -> 旋转角速度(deg/s) 的映射
+const WAVE_GAIN = 1100;
 const MAX_SPIN_SPEED = 1400;
 const IDLE_SPIN_SPEED = 12;
+const HOLD_SPIN_SPEED = 220;
+const MIN_SCALE = 0.55;
+const MAX_SCALE = 1.85;
+const SCALE_STEP = 0.18;
 
 function friendlyError(error: unknown): string {
   if (error instanceof DOMException) {
@@ -43,13 +57,19 @@ function friendlyError(error: unknown): string {
 }
 
 export function KaleidoscopeApp() {
-  const [phase, setPhase] = useState<Phase>('idle');
+  const [mode, setMode] = useState<AppMode>('design');
+  const [design, setDesign] = useState<DesignConfig>(() => createDefaultDesign());
+  const [designPatternIndex, setDesignPatternIndex] = useState(0);
+  const [hydrated, setHydrated] = useState(false);
+
+  const [runPhase, setRunPhase] = useState<RunPhase>('starting');
   const [errorMessage, setErrorMessage] = useState('');
   const [patternIndex, setPatternIndex] = useState(0);
-  const [gesture, setGesture] = useState<EngineGesture>('none');
+  const [scale, setScale] = useState(1);
   const [muted, setMuted] = useState(false);
   const [showPreview, setShowPreview] = useState(true);
   const [hintVisible, setHintVisible] = useState(true);
+  const [badgeText, setBadgeText] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
@@ -60,54 +80,112 @@ export function KaleidoscopeApp() {
   const angleRef = useRef(0);
   const velocityRef = useRef(IDLE_SPIN_SPEED);
   const targetVelocityRef = useRef(IDLE_SPIN_SPEED);
-  const isPalmRef = useRef(false);
+  const rotatingRef = useRef(false);
   const lastGestureRef = useRef<EngineGesture>('none');
-  const phaseRef = useRef<Phase>('idle');
+  const runPhaseRef = useRef<RunPhase>('starting');
+  const designRef = useRef(design);
+  const patternIndexRef = useRef(patternIndex);
 
   const patternSrc = PATTERNS[patternIndex]?.src ?? PATTERNS[0].src;
+  const currentMap = design[patternIndex] ?? design[0];
+
+  useEffect(() => {
+    designRef.current = design;
+  }, [design]);
+
+  useEffect(() => {
+    patternIndexRef.current = patternIndex;
+  }, [patternIndex]);
+
+  useEffect(() => {
+    setDesign(loadDesign());
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    saveDesign(design);
+  }, [design, hydrated]);
 
   const nextPattern = useCallback(() => {
     setPatternIndex((index) => (index + 1) % PATTERNS.length);
+    setScale(1);
     playPop();
-    // 切换瞬间给一个顺势加速的「甩出去」手感
     velocityRef.current += 180;
+  }, []);
+
+  const bumpScale = useCallback((delta: number) => {
+    setScale((value) =>
+      Math.max(MIN_SCALE, Math.min(MAX_SCALE, Number((value + delta).toFixed(2)))),
+    );
+    playPop();
   }, []);
 
   const handleFrame = useCallback(
     (frame: {
       gesture: EngineGesture;
       waveSpeed: number;
-      firedFist: boolean;
+      triggered: AssignableGesture | null;
     }) => {
-      isPalmRef.current = frame.gesture === 'palm';
-      if (frame.gesture === 'palm') {
-        const target = Math.max(
-          -MAX_SPIN_SPEED,
-          Math.min(MAX_SPIN_SPEED, frame.waveSpeed * WAVE_GAIN),
-        );
-        targetVelocityRef.current = target;
+      const map =
+        designRef.current[patternIndexRef.current] ?? designRef.current[0];
+      if (!map) return;
+
+      const isRotateGesture = frame.gesture === map.rotate;
+      rotatingRef.current = isRotateGesture;
+      if (isRotateGesture) {
+        if (map.rotate === 'palm') {
+          targetVelocityRef.current = Math.max(
+            -MAX_SPIN_SPEED,
+            Math.min(MAX_SPIN_SPEED, frame.waveSpeed * WAVE_GAIN),
+          );
+        } else {
+          targetVelocityRef.current =
+            Math.abs(frame.waveSpeed) > 0.15
+              ? Math.max(
+                  -MAX_SPIN_SPEED,
+                  Math.min(MAX_SPIN_SPEED, frame.waveSpeed * WAVE_GAIN),
+                )
+              : HOLD_SPIN_SPEED;
+        }
       }
-      if (frame.firedFist) {
-        nextPattern();
+
+      if (frame.triggered) {
+        if (frame.triggered === map.zoomIn) {
+          bumpScale(SCALE_STEP);
+          setBadgeText(`${gestureLabel(frame.triggered)} · 放大`);
+        } else if (frame.triggered === map.zoomOut) {
+          bumpScale(-SCALE_STEP);
+          setBadgeText(`${gestureLabel(frame.triggered)} · 缩小`);
+        } else if (frame.triggered === map.next) {
+          nextPattern();
+          setBadgeText(`${gestureLabel(frame.triggered)} · 换图`);
+        } else if (frame.triggered === map.rotate && map.rotate !== 'palm') {
+          // 离散触发时也给一点甩动感
+          velocityRef.current += 160;
+          setBadgeText(`${gestureLabel(frame.triggered)} · 翻转`);
+        }
       }
+
       if (frame.gesture !== lastGestureRef.current) {
         lastGestureRef.current = frame.gesture;
-        setGesture(frame.gesture);
+        if (isRotateGesture && frame.gesture !== 'none') {
+          setBadgeText(`${gestureLabel(map.rotate)} · 旋转中`);
+        }
       }
     },
-    [nextPattern],
+    [bumpScale, nextPattern],
   );
 
-  // 旋转主循环：挥手时跟随目标速度，手离开后惯性衰减回缓慢自转
   useEffect(() => {
-    if (phase !== 'running') return;
+    if (mode !== 'run' || runPhase !== 'running') return;
     let last = performance.now();
 
     const loop = (now: number): void => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
-      const ease = isPalmRef.current ? 8 : 1.4;
-      const goal = isPalmRef.current
+      const ease = rotatingRef.current ? 8 : 1.4;
+      const goal = rotatingRef.current
         ? targetVelocityRef.current
         : IDLE_SPIN_SPEED;
       velocityRef.current +=
@@ -126,7 +204,7 @@ export function KaleidoscopeApp() {
         spinRafRef.current = null;
       }
     };
-  }, [phase]);
+  }, [mode, runPhase]);
 
   const cleanupCamera = useCallback(() => {
     engineRef.current?.stop();
@@ -139,17 +217,18 @@ export function KaleidoscopeApp() {
     }
   }, []);
 
-  const handleStart = useCallback(async () => {
-    if (phaseRef.current === 'starting' || phaseRef.current === 'running') {
-      return;
-    }
-    phaseRef.current = 'starting';
-    setPhase('starting');
+  const startRun = useCallback(async () => {
+    runPhaseRef.current = 'starting';
+    setMode('run');
+    setRunPhase('starting');
     setErrorMessage('');
+    setPatternIndex(0);
+    setScale(1);
+    setHintVisible(true);
+    setBadgeText(null);
     initSound();
 
     try {
-      // 必须在用户手势调用栈内申请摄像头权限（iPad Safari 要求）
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: 'user',
@@ -159,13 +238,23 @@ export function KaleidoscopeApp() {
         audio: false,
       });
       streamRef.current = stream;
-      const video = videoRef.current;
-      if (!video) throw new Error('视频元素未就绪');
+
+      // 等 React 挂载 run 模式的 video/canvas
+      let video: HTMLVideoElement | null = null;
+      let overlay: HTMLCanvasElement | null = null;
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        video = videoRef.current;
+        overlay = overlayRef.current;
+        if (video && overlay) break;
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 50);
+        });
+      }
+      if (!video || !overlay) throw new Error('视频元素未就绪');
       video.srcObject = stream;
       try {
         await video.play();
       } catch {
-        // 个别 Safari 版本首次 play() 会被中断；等待 loadeddata 后再试一次
         await new Promise<void>((resolve, reject) => {
           video.addEventListener('loadeddata', () => resolve(), { once: true });
           video.addEventListener('error', () => reject(new Error('视频加载失败')), {
@@ -175,8 +264,6 @@ export function KaleidoscopeApp() {
         await video.play();
       }
 
-      const overlay = overlayRef.current;
-      if (!overlay) throw new Error('画布元素未就绪');
       const engine = new GestureEngine(video, overlay, {
         onFrame: handleFrame,
       });
@@ -184,26 +271,26 @@ export function KaleidoscopeApp() {
       engineRef.current = engine;
       engine.start();
 
-      phaseRef.current = 'running';
-      setPhase('running');
+      runPhaseRef.current = 'running';
+      setRunPhase('running');
     } catch (error) {
       console.error('[Kaleidoscope] 启动失败：', error);
       cleanupCamera();
-      phaseRef.current = 'error';
+      runPhaseRef.current = 'error';
       setErrorMessage(friendlyError(error));
-      setPhase('error');
+      setRunPhase('error');
     }
   }, [cleanupCamera, handleFrame]);
 
-  const handleStop = useCallback(() => {
+  const backToDesign = useCallback(() => {
     cleanupCamera();
-    isPalmRef.current = false;
+    rotatingRef.current = false;
     targetVelocityRef.current = IDLE_SPIN_SPEED;
     velocityRef.current = IDLE_SPIN_SPEED;
-    phaseRef.current = 'idle';
-    setPhase('idle');
-    setGesture('none');
+    runPhaseRef.current = 'starting';
+    setMode('design');
     lastGestureRef.current = 'none';
+    setBadgeText(null);
   }, [cleanupCamera]);
 
   const toggleMute = useCallback(() => {
@@ -215,6 +302,17 @@ export function KaleidoscopeApp() {
     });
   }, []);
 
+  const updateMapping = useCallback(
+    (patternIdx: number, action: PatternAction, gestureId: AssignableGesture) => {
+      setDesign((prev) =>
+        prev.map((item, index) =>
+          index === patternIdx ? { ...item, [action]: gestureId } : item,
+        ),
+      );
+    },
+    [],
+  );
+
   useEffect(() => {
     setSoundMuted(isSoundMuted());
     return () => {
@@ -222,33 +320,44 @@ export function KaleidoscopeApp() {
     };
   }, [cleanupCamera]);
 
-  // 进入玩耍 6 秒后、或首次识别到手势时，自动收起操作提示，避免遮挡画面
   useEffect(() => {
-    if (phase !== 'running') return;
-    const timer = window.setTimeout(() => setHintVisible(false), 6000);
+    if (mode !== 'run' || runPhase !== 'running') return;
+    const timer = window.setTimeout(() => setHintVisible(false), 8000);
     return () => window.clearTimeout(timer);
-  }, [phase]);
+  }, [mode, runPhase]);
 
   useEffect(() => {
-    if (gesture === 'palm' || gesture === 'fist') {
-      setHintVisible(false);
-    }
-  }, [gesture]);
+    if (!badgeText) return;
+    const timer = window.setTimeout(() => setBadgeText(null), 1600);
+    return () => window.clearTimeout(timer);
+  }, [badgeText]);
 
-  const gestureBadge =
-    gesture === 'fist'
-      ? { text: '拳头！换一张', className: 'bg-amber-400 text-amber-950' }
-      : gesture === 'palm'
-        ? { text: '挥手转起来', className: 'bg-teal-300 text-teal-950' }
-        : null;
+  if (mode === 'design') {
+    return (
+      <main className="kaleido-root">
+        <DesignStudio
+          config={design}
+          selectedIndex={designPatternIndex}
+          onSelectPattern={setDesignPatternIndex}
+          onChangeMapping={updateMapping}
+          onReset={() => setDesign(createDefaultDesign())}
+          onRun={() => {
+            void startRun();
+          }}
+        />
+        <div className="rotate-hint">
+          <RotateCcw className="size-20 text-white/90 [animation:rotate-hint-spin_1.8s_ease-in-out_infinite]" />
+          <p className="mt-6 font-kid text-3xl text-white">把 iPad 横过来玩</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="kaleido-root">
-      {/* 万花筒画面 */}
-      <KaleidoscopeStage patternSrc={patternSrc} ref={rotorRef} />
+      <KaleidoscopeStage patternSrc={patternSrc} scale={scale} ref={rotorRef} />
 
-      {/* 摄像头预览：starting 阶段即需挂载（引擎依赖 video/canvas），开始页会盖住它 */}
-      {(phase === 'running' || phase === 'starting') && (
+      {(runPhase === 'running' || runPhase === 'starting') && (
         <div
           className={`camera-preview-wrap ${
             showPreview ? 'opacity-100' : 'pointer-events-none opacity-0'
@@ -263,26 +372,23 @@ export function KaleidoscopeApp() {
               autoPlay
             />
             <canvas ref={overlayRef} className="camera-preview-overlay" />
-            {gestureBadge && (
-              <span
-                className={`absolute -bottom-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-4 py-1 text-base font-bold shadow-lg ${gestureBadge.className}`}
-              >
-                {gestureBadge.text}
+            {badgeText && (
+              <span className="absolute -bottom-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-amber-300 px-4 py-1 text-base font-bold text-amber-950 shadow-lg">
+                {badgeText}
               </span>
             )}
           </div>
         </div>
       )}
 
-      {/* ===== 玩耍中的悬浮 UI ===== */}
-      {phase === 'running' && (
+      {runPhase === 'running' && currentMap && (
         <>
           <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between p-4 sm:p-6">
             <div className="pointer-events-auto flex gap-3">
               <button
                 type="button"
-                onClick={handleStop}
-                aria-label="退出玩耍"
+                onClick={backToDesign}
+                aria-label="返回设计"
                 className="glass-button"
               >
                 <X className="size-7" />
@@ -315,12 +421,16 @@ export function KaleidoscopeApp() {
             </div>
           </div>
 
-          {/* 底部：图案指示点 + 手动换图兜底按钮 + 手势提示 */}
           <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col items-center gap-3 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
             {hintVisible && (
-              <div className="gesture-hint">
+              <div className="gesture-hint max-w-3xl text-center">
                 <Hand className="size-6 shrink-0" />
-                <span>握紧拳头换图案 · 张开手掌左右挥，转起来！</span>
+                <span>
+                  本张：{gestureLabel(currentMap.rotate)}转 ·{' '}
+                  {gestureLabel(currentMap.zoomIn)}放大 ·{' '}
+                  {gestureLabel(currentMap.zoomOut)}缩小 ·{' '}
+                  {gestureLabel(currentMap.next)}换图
+                </span>
               </div>
             )}
             <div className="flex items-center gap-2.5">
@@ -339,47 +449,22 @@ export function KaleidoscopeApp() {
             <button
               type="button"
               onClick={nextPattern}
-              className="pointer-events-auto flex h-16 items-center gap-3 rounded-full bg-gradient-to-r from-amber-300 via-orange-400 to-pink-500 px-9 font-kid text-2xl font-bold text-white shadow-[0_10px_30px_rgba(255,138,92,0.45)] transition-transform duration-300 [transition-timing-function:cubic-bezier(0.34,1.56,0.64,1)] hover:scale-105 active:scale-95"
+              className="pointer-events-auto flex h-14 items-center gap-3 rounded-full bg-gradient-to-r from-amber-300 via-orange-400 to-pink-500 px-8 font-kid text-xl font-bold text-white shadow-[0_10px_30px_rgba(255,138,92,0.45)] transition-transform duration-300 [transition-timing-function:cubic-bezier(0.34,1.56,0.64,1)] hover:scale-105 active:scale-95"
             >
-              <SkipForward className="size-8 fill-current" />
+              <SkipForward className="size-7 fill-current" />
               换一张
             </button>
           </div>
         </>
       )}
 
-      {/* ===== 开始 / 加载 / 错误 覆盖层 ===== */}
-      {phase !== 'running' && (
+      {(runPhase === 'starting' || runPhase === 'error') && (
         <div className="start-screen">
           <div className="start-blob start-blob-pink" />
           <div className="start-blob start-blob-cyan" />
           <div className="start-blob start-blob-amber" />
-
           <div className="relative z-10 flex w-full max-w-2xl flex-col items-center px-8 text-center">
-            <div className="mb-6 flex h-28 w-28 items-center justify-center rounded-full bg-white/10 shadow-[0_0_60px_rgba(255,194,63,0.45)] ring-1 ring-white/25 backdrop-blur-sm">
-              <Sparkles className="size-14 text-amber-300" />
-            </div>
-            <h1 className="font-kid text-6xl text-[#fff7e8] drop-shadow-[0_4px_18px_rgba(155,107,255,0.55)] sm:text-7xl">
-              手势万花筒
-            </h1>
-            <p className="mt-5 max-w-md font-kid text-2xl leading-relaxed text-white/75">
-              握紧拳头换图案
-              <br />
-              张开小手挥一挥，世界就转起来
-            </p>
-
-            {phase === 'idle' && (
-              <button
-                type="button"
-                onClick={handleStart}
-                className="start-button mt-12"
-              >
-                <span className="start-button-shine" />
-                开始玩耍
-              </button>
-            )}
-
-            {phase === 'starting' && (
+            {runPhase === 'starting' && (
               <div className="mt-14 flex flex-col items-center gap-5">
                 <div className="flex gap-3">
                   <span className="loading-dot loading-dot-1" />
@@ -387,31 +472,40 @@ export function KaleidoscopeApp() {
                   <span className="loading-dot loading-dot-3" />
                 </div>
                 <p className="font-kid text-2xl text-white/80">
-                  正在准备魔法…
+                  正在打开摄像头，准备表演…
                 </p>
               </div>
             )}
-
-            {phase === 'error' && (
+            {runPhase === 'error' && (
               <div className="mt-10 flex w-full flex-col items-center gap-6 rounded-3xl bg-white/10 p-7 ring-1 ring-amber-300/40 backdrop-blur-sm">
                 <p className="font-kid text-2xl leading-relaxed text-amber-200">
                   {errorMessage}
                 </p>
-                <button
-                  type="button"
-                  onClick={handleStart}
-                  className="flex h-16 items-center gap-3 rounded-full bg-gradient-to-r from-amber-300 to-orange-500 px-10 font-kid text-2xl font-bold text-white shadow-lg transition-transform duration-300 [transition-timing-function:cubic-bezier(0.34,1.56,0.64,1)] hover:scale-105 active:scale-95"
-                >
-                  <RotateCcw className="size-7" />
-                  再试一次
-                </button>
+                <div className="flex flex-wrap justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void startRun();
+                    }}
+                    className="flex h-16 items-center gap-3 rounded-full bg-gradient-to-r from-amber-300 to-orange-500 px-10 font-kid text-2xl font-bold text-white shadow-lg"
+                  >
+                    <RotateCcw className="size-7" />
+                    再试一次
+                  </button>
+                  <button
+                    type="button"
+                    onClick={backToDesign}
+                    className="flex h-16 items-center gap-3 rounded-full bg-white/15 px-10 font-kid text-2xl font-bold text-white ring-1 ring-white/25"
+                  >
+                    返回设计
+                  </button>
+                </div>
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* ===== 竖屏软提示（横屏自动消失） ===== */}
       <div className="rotate-hint">
         <RotateCcw className="size-20 text-white/90 [animation:rotate-hint-spin_1.8s_ease-in-out_infinite]" />
         <p className="mt-6 font-kid text-3xl text-white">把 iPad 横过来玩</p>

@@ -1,17 +1,18 @@
 import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 import type { NormalizedLandmark } from '@mediapipe/tasks-vision';
-import { classifyHand, GestureTracker } from './gestures';
+import type { AssignableGesture } from './design-config';
+import { classifyHand, GestureTracker, type GestureKind } from './gestures';
 
-export type EngineGesture = 'fist' | 'palm' | 'partial' | 'none';
+export type EngineGesture = GestureKind;
 
 export interface GestureFrame {
   /** 当前稳定手势 */
   gesture: EngineGesture;
   /** 镜像视角下的水平挥动速度（屏幕宽度/秒），正为向右 */
   waveSpeed: number;
-  /** 本帧是否完成一次握拳（用于切换图案） */
-  firedFist: boolean;
-  /** 镜像后的关键点（坐标已按自拍预览方向翻转），用于绘制骨架 */
+  /** 本帧是否完成一次离散触发（握拳/比耶等保持后触发） */
+  triggered: AssignableGesture | null;
+  /** 镜像后的关键点，用于绘制骨架 */
   landmarks: NormalizedLandmark[] | null;
 }
 
@@ -21,7 +22,7 @@ export interface GestureEngineOptions {
 
 const WASM_PATH = '/vendor/mediapipe/wasm';
 const MODEL_PATH = '/vendor/mediapipe/hand_landmarker.task';
-const DETECT_INTERVAL_MS = 40; // 约 25fps，兼顾 iPad 性能与识别延迟
+const DETECT_INTERVAL_MS = 40;
 
 /**
  * MediaPipe HandLandmarker 封装：
@@ -117,7 +118,6 @@ export class GestureEngine {
 
     let result;
     try {
-      // detectForVideo 要求时间戳严格单调递增，始终复用同一时钟
       result = landmarker.detectForVideo(this.video, nowMs);
     } catch (error) {
       console.warn('[GestureEngine] 检测失败：', error);
@@ -129,36 +129,34 @@ export class GestureEngine {
     if (!rawLandmarks) {
       this.tracker.update('none', null, nowMs);
       this.clearOverlay();
-      this.emit('none', 0, false, null);
+      this.emit('none', 0, null, null);
       return;
     }
 
-    // 镜像关键点：与摄像头预览（scaleX(-1)）方向一致
     const landmarks: NormalizedLandmark[] = rawLandmarks.map((p) => ({
       ...p,
       x: 1 - p.x,
     }));
 
     const kind = classifyHand(rawLandmarks);
-    // 掌心以中指指根(9)为锚点，挥动时位移稳定
     const palmX = 1 - (rawLandmarks[9]?.x ?? 0.5);
     const tracked = this.tracker.update(kind, palmX, nowMs);
 
     this.drawOverlay(landmarks, kind);
-    this.emit(tracked.kind, tracked.waveSpeed, tracked.onFist, landmarks);
+    this.emit(tracked.kind, tracked.waveSpeed, tracked.triggered, landmarks);
   }
 
   private emit(
     gesture: EngineGesture,
     waveSpeed: number,
-    firedFist: boolean,
+    triggered: AssignableGesture | null,
     landmarks: NormalizedLandmark[] | null,
   ): void {
-    this.options.onFrame({ gesture, waveSpeed, firedFist, landmarks });
+    this.options.onFrame({ gesture, waveSpeed, triggered, landmarks });
   }
 
   private emitIdle(): void {
-    this.emit('none', 0, false, null);
+    this.emit('none', 0, null, null);
   }
 
   private clearOverlay(): void {
@@ -181,7 +179,15 @@ export class GestureEngine {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     const color =
-      kind === 'fist' ? '#ffc23f' : kind === 'palm' ? '#43e7e0' : '#ff8fb3';
+      kind === 'fist'
+        ? '#ffc23f'
+        : kind === 'palm'
+          ? '#43e7e0'
+          : kind === 'peace'
+            ? '#a78bfa'
+            : kind === 'point'
+              ? '#fb7185'
+              : '#ff8fb3';
 
     ctx.lineWidth = 4;
     ctx.strokeStyle = color;
@@ -189,7 +195,6 @@ export class GestureEngine {
     ctx.shadowColor = color;
     ctx.shadowBlur = 8;
 
-    // 关键点坐标已镜像，直接按归一化坐标绘制
     for (const pair of HAND_CONNECTIONS) {
       const [a, b] = pair;
       const pa = landmarks[a];
@@ -208,7 +213,6 @@ export class GestureEngine {
   }
 }
 
-// MediaPipe Hands 21 关键点的连接关系（与官方 HAND_CONNECTIONS 一致）
 const HAND_CONNECTIONS: ReadonlyArray<readonly [number, number]> = [
   [0, 1], [1, 2], [2, 3], [3, 4],
   [0, 5], [5, 6], [6, 7], [7, 8],

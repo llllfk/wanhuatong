@@ -93,10 +93,5 @@
   "packageManager": "pnpm@9.0.0",
   "engines": {
     "pnpm": ">=9.0.0"
-  },
-  "pnpm": {
-    "overrides": {
-      "sharp": "^0.35.4"
-    }
   }
 }

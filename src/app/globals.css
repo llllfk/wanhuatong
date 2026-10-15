@@ -595,11 +595,15 @@ body {
 
 .design-pattern-grid.is-aside {
   justify-content: flex-start;
+  align-content: flex-start;
+  align-items: flex-start;
   gap: 0.55rem;
+  overflow-x: hidden;
   overflow-y: auto;
   min-height: 0;
   flex: 1;
-  padding-right: 0.15rem;
+  /* 给选中描边/阴影留空隙，避免被父级 overflow 裁切 */
+  padding: 0.35rem 0.35rem 0.55rem 0.1rem;
   scrollbar-width: thin;
   scrollbar-color: rgb(255 194 63 / 55%) rgb(255 255 255 / 8%);
 }
@@ -609,8 +613,11 @@ body {
   display: flex;
   width: calc(50% - 0.3rem);
   max-width: 7rem;
+  height: fit-content;
+  flex: 0 0 auto;
   flex-direction: column;
   align-items: center;
+  align-self: flex-start;
   gap: 0.25rem;
   border-radius: 1.1rem;
   padding: 0.5rem;
@@ -622,14 +629,14 @@ body {
 
 .design-pattern-card:hover {
   border-color: rgb(255 194 63 / 55%);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 
 .design-pattern-card.is-active {
   background: rgb(255 194 63 / 20%);
   border-color: #ffc23f;
-  box-shadow: 0 0 0 3px rgb(255 194 63 / 25%), 0 10px 24px rgb(255 194 63 / 18%);
-  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 0 0 3px rgb(255 194 63 / 25%), 0 8px 18px rgb(255 194 63 / 16%);
+  transform: translateY(-1px);
 }
 
 .design-pattern-check {

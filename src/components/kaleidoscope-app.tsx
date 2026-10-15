@@ -22,6 +22,7 @@ import {
   createGesturesForMode,
   gestureGroupOf,
   gestureLabel,
+  inferGestureMode,
   loadStudio,
   saveStudio,
   type AssignableGesture,
@@ -46,12 +47,13 @@ type RunPhase = 'starting' | 'running' | 'error';
 
 const WAVE_GAIN = 420;
 const MAX_SPIN_SPEED = 480;
-const IDLE_SPIN_SPEED = 10;
+/** 无旋转手势时停住，不做默认自转 */
+const IDLE_SPIN_SPEED = 0;
 const HOLD_SPIN_SPEED = 90;
 const MIN_SCALE = 0.55;
 const MAX_SCALE = 1.85;
 /** 按住放大/缩小时每秒缩放变化量（持续渐变） */
-const ZOOM_SPEED = 0.32;
+const ZOOM_SPEED = 0.55;
 
 function friendlyError(error: unknown): string {
   if (error instanceof DOMException) {
@@ -139,7 +141,6 @@ export function KaleidoscopeApp() {
     motionRef.current.zoom = 1;
     zoomDirRef.current = 0;
     playPop();
-    velocityRef.current += 80;
   }, []);
 
   const handleFrame = useCallback(
@@ -305,8 +306,10 @@ export function KaleidoscopeApp() {
         await video.play();
       }
 
+      const detectMode = inferGestureMode(gesturesRef.current);
       const engine = new GestureEngine(video, overlay, {
         onFrame: handleFrame,
+        detectMode,
       });
       await engine.init();
       engineRef.current = engine;

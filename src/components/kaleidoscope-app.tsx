@@ -5,6 +5,8 @@ import {
   Hand,
   RotateCcw,
   SkipForward,
+  ToggleLeft,
+  ToggleRight,
   Volume2,
   VolumeX,
   X,
@@ -42,10 +44,10 @@ import {
 type AppMode = 'design' | 'run';
 type RunPhase = 'starting' | 'running' | 'error';
 
-const WAVE_GAIN = 1100;
-const MAX_SPIN_SPEED = 1400;
-const IDLE_SPIN_SPEED = 12;
-const HOLD_SPIN_SPEED = 220;
+const WAVE_GAIN = 420;
+const MAX_SPIN_SPEED = 480;
+const IDLE_SPIN_SPEED = 10;
+const HOLD_SPIN_SPEED = 90;
 const MIN_SCALE = 0.55;
 const MAX_SCALE = 1.85;
 const SCALE_STEP = 0.18;
@@ -132,7 +134,7 @@ export function KaleidoscopeApp() {
     setPatternIndex((index) => (index + 1) % len);
     setScale(1);
     playPop();
-    velocityRef.current += 180;
+    velocityRef.current += 80;
   }, []);
 
   const bumpScale = useCallback((delta: number) => {
@@ -183,7 +185,7 @@ export function KaleidoscopeApp() {
           setBadgeText(`${gestureLabel(frame.triggered)} · 换图`);
         } else if (frame.triggered === map.rotate && map.rotate !== 'palm') {
           // 离散触发时也给一点甩动感
-          velocityRef.current += 160;
+          velocityRef.current += 70;
           setBadgeText(`${gestureLabel(frame.triggered)} · 翻转`);
         }
       }
@@ -409,12 +411,6 @@ export function KaleidoscopeApp() {
   }, [cleanupCamera]);
 
   useEffect(() => {
-    if (mode !== 'run' || runPhase !== 'running') return;
-    const timer = window.setTimeout(() => setHintVisible(false), 8000);
-    return () => window.clearTimeout(timer);
-  }, [mode, runPhase]);
-
-  useEffect(() => {
     if (!badgeText) return;
     const timer = window.setTimeout(() => setBadgeText(null), 1600);
     return () => window.clearTimeout(timer);
@@ -507,6 +503,20 @@ export function KaleidoscopeApp() {
                   <CameraOff className="size-7" />
                 ) : (
                   <Hand className="size-7" />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setHintVisible((value) => !value)}
+                aria-label={hintVisible ? '关闭手势说明' : '打开手势说明'}
+                aria-pressed={hintVisible}
+                className="glass-button"
+                title={hintVisible ? '关闭手势说明' : '打开手势说明'}
+              >
+                {hintVisible ? (
+                  <ToggleRight className="size-7" />
+                ) : (
+                  <ToggleLeft className="size-7" />
                 )}
               </button>
             </div>

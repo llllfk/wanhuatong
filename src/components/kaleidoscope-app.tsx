@@ -52,12 +52,10 @@ const MAX_SPIN_SPEED = 480;
 /** 无旋转手势时停住，不做默认自转 */
 const IDLE_SPIN_SPEED = 0;
 const HOLD_SPIN_SPEED = 90;
-/** 按住放大/缩小时附带的缓转速度（度/秒），更有万花筒感 */
-const ZOOM_SPIN_SPEED = 75;
 const MIN_SCALE = 0.55;
 const MAX_SCALE = 1.85;
 /** 按住放大/缩小时每秒缩放变化量（持续渐变） */
-const ZOOM_SPEED = 0.55;
+const ZOOM_SPEED = 0.72;
 /** 手掌推近/拉远：approachSpeed → 缩放速率 */
 const ZOOM_APPROACH_GAIN = 1.35;
 const ZOOM_APPROACH_DEADZONE = 0.06;
@@ -166,9 +164,8 @@ export function KaleidoscopeApp() {
       const isZoomIn = !palmZoom && frame.gesture === map.zoomIn;
       const isZoomOut = !palmZoom && frame.gesture === map.zoomOut;
       const isPalmZooming = palmZoom && frame.gesture === 'palm';
-      const isZooming = isZoomIn || isZoomOut || isPalmZooming;
 
-      // 放大/缩小：按住渐变，或张手推近/拉远
+      // 放大/缩小只缩放，不附带旋转（避免被当成「只会转」）
       if (isPalmZooming) {
         const speed = frame.approachSpeed;
         if (Math.abs(speed) < ZOOM_APPROACH_DEADZONE) {
@@ -187,7 +184,7 @@ export function KaleidoscopeApp() {
         zoomRateRef.current = 0;
       }
 
-      rotatingRef.current = isRotateGesture || isZooming;
+      rotatingRef.current = isRotateGesture;
       if (isRotateGesture) {
         if (map.rotate === 'palm') {
           targetVelocityRef.current = Math.max(
@@ -203,8 +200,6 @@ export function KaleidoscopeApp() {
                 )
               : HOLD_SPIN_SPEED;
         }
-      } else if (isZooming) {
-        targetVelocityRef.current = ZOOM_SPIN_SPEED;
       }
 
       if (frame.triggered) {

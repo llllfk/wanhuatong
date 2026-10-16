@@ -95,9 +95,16 @@ export function classifyHandRaw(lm: NormalizedLandmark[] | undefined): GestureKi
   const pinkyExt = isFingerExtended(lm, 20, 18, 1.08);
   const extended = [indexExt, middleExt, ringExt, pinkyExt].filter(Boolean).length;
 
-  const thumbSpread = dist(lm[4], lm[5]) > dist(lm[2], lm[5]) * 1.15;
+  // 拇指张开：阈值放宽；四指全伸时不再强依赖拇指（拇指关键点常漂）
+  const thumbSpread =
+    dist(lm[4], lm[5]) > dist(lm[2], lm[5]) * 1.05;
+  const thumbLoose =
+    dist(lm[4], lm[5]) > dist(lm[2], lm[5]) * 0.95;
 
-  if (extended >= 3 && thumbSpread) return 'palm';
+  // 张手：四指伸直即可；或三指伸直 + 拇指略张开
+  if (extended >= 4 || (extended >= 3 && (thumbSpread || thumbLoose))) {
+    return 'palm';
+  }
   if (indexExt && middleExt && !ringExt && !pinkyExt) return 'peace';
   // 一指：中指要明显弯曲，避免比耶抖动时掉进一指
   if (indexExt && middleClearlyBent && !ringExt && !pinkyExt) return 'point';

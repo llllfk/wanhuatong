@@ -71,7 +71,7 @@ export function createGesturesForMode(
       next: 'clap',
     };
   }
-  // 默认：张手一直放大，握拳一直缩小；左右挥手旋转
+  // 默认四个动作各用不同手势：比耶转、张手放大、握拳缩小、一指换图
   return {
     rotate: 'peace',
     zoomIn: 'palm',
@@ -152,13 +152,17 @@ function normalizeGestures(
   raw: Partial<PatternGestureMap> | null | undefined,
 ): PatternGestureMap {
   const base = createDefaultGestures();
-  const next = {
+  const next = ensureSingleGestureMode({
     rotate: isAssignable(raw?.rotate) ? raw.rotate : base.rotate,
     zoomIn: isAssignable(raw?.zoomIn) ? raw.zoomIn : base.zoomIn,
     zoomOut: isAssignable(raw?.zoomOut) ? raw.zoomOut : base.zoomOut,
     next: isAssignable(raw?.next) ? raw.next : base.next,
-  };
-  return ensureSingleGestureMode(next);
+  });
+  // 旧配置若撞车（如缩小与换图都是握拳），整套回到该模式默认且互不重复
+  if (findGestureConflict(next)) {
+    return createGesturesForMode(inferGestureMode(next));
+  }
+  return next;
 }
 
 export function loadStudio(): PersistedStudio {

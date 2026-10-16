@@ -314,8 +314,9 @@ export function DesignStudio({
                                     selected ? 'is-selected' : ''
                                   } ${usedElsewhere ? 'is-swap' : ''}`}
                                 >
-                                  {gesture.id === 'handsOnHips' ? (
-                                    <HipsPoseIcon />
+                                  {gesture.id === 'handsOnHips' ||
+                                  gesture.id === 'armsOut' ? (
+                                    <BodyPoseIcon pose={gesture.id} />
                                   ) : (
                                     <span className="text-2xl leading-none">
                                       {gesture.emoji}
@@ -380,8 +381,8 @@ function isGestureUsedByOther(
   );
 }
 
-/** 叉腰示意图：双手撑在腰侧，比通用 emoji 更像 */
-function HipsPoseIcon() {
+/** 身体姿势示意图（比 emoji 更像对应动作） */
+function BodyPoseIcon({ pose }: { pose: 'handsOnHips' | 'armsOut' }) {
   return (
     <svg
       className="size-7 shrink-0"
@@ -389,36 +390,58 @@ function HipsPoseIcon() {
       aria-hidden
       fill="none"
     >
-      <circle cx="16" cy="6.5" r="3.2" fill="#ffe08a" />
+      <circle cx="16" cy="5.8" r="3" fill="#ffe08a" />
       <path
-        d="M16 10.2v8.2"
+        d="M16 9.4v8.6"
         stroke="#ffe08a"
-        strokeWidth="2.4"
+        strokeWidth="2.6"
         strokeLinecap="round"
       />
       <path
-        d="M16 18.4 11.2 27M16 18.4 20.8 27"
+        d="M16 18 11 28M16 18 21 28"
         stroke="#ffe08a"
-        strokeWidth="2.4"
+        strokeWidth="2.6"
         strokeLinecap="round"
       />
-      {/* 双臂叉腰：肘外撑、手回腰侧 */}
-      <path
-        d="M16 12.2c-2.2 0-4.2 1.1-5.2 2.8L8.2 18"
-        stroke="#ff9ecd"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M16 12.2c2.2 0 4.2 1.1 5.2 2.8L23.8 18"
-        stroke="#ff9ecd"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx="10.2" cy="16.6" r="1.5" fill="#ff9ecd" />
-      <circle cx="21.8" cy="16.6" r="1.5" fill="#ff9ecd" />
+      {pose === 'armsOut' ? (
+        <>
+          {/* T 字平举：双臂水平向两侧伸直 */}
+          <path
+            d="M16 12H4.5"
+            stroke="#7dd3fc"
+            strokeWidth="2.8"
+            strokeLinecap="round"
+          />
+          <path
+            d="M16 12H27.5"
+            stroke="#7dd3fc"
+            strokeWidth="2.8"
+            strokeLinecap="round"
+          />
+          <circle cx="4.5" cy="12" r="1.7" fill="#7dd3fc" />
+          <circle cx="27.5" cy="12" r="1.7" fill="#7dd3fc" />
+        </>
+      ) : (
+        <>
+          {/* 叉腰：肘向外撑成菱形，手落在腰侧 */}
+          <path
+            d="M16 11.5 7.5 14.5 11.5 18.5"
+            stroke="#fb923c"
+            strokeWidth="2.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M16 11.5 24.5 14.5 20.5 18.5"
+            stroke="#fb923c"
+            strokeWidth="2.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <circle cx="11.5" cy="18.5" r="1.7" fill="#fb923c" />
+          <circle cx="20.5" cy="18.5" r="1.7" fill="#fb923c" />
+        </>
+      )}
     </svg>
   );
 }

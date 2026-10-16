@@ -10,7 +10,6 @@ export type BodyPose = Extract<
   | 'handsOnHips'
   | 'clap'
   | 'handsOnHead'
-  | 'nod'
 >;
 
 const NOSE = 0;
@@ -42,7 +41,6 @@ function dist(a: NormalizedLandmark, b: NormalizedLandmark): number {
  * 3. 拍手 — 双腕胸前合拢
  * 4. 双手叉腰 — 手在腰侧、肘外撑
  * 5. 双臂平举 — T 字水平
- * 6. 点头 — 低头（手臂不在以上姿势）
  */
 export function classifyPoseRaw(
   lm: NormalizedLandmark[] | undefined,
@@ -89,10 +87,6 @@ export function classifyPoseRaw(
   const notRaised = lw.y > midShoulderY - 0.05 && rw.y > midShoulderY - 0.05;
   if (leftLevel && rightLevel && leftOut && rightOut && notRaised) {
     return 'armsOut';
-  }
-
-  if (isHeadNodDown(lm, midShoulderY, shoulderWidth)) {
-    return 'nod';
   }
 
   return 'none';
@@ -228,26 +222,13 @@ function isHandsOnHips(
   return true;
 }
 
-function isHeadNodDown(
-  lm: NormalizedLandmark[],
-  midShoulderY: number,
-  shoulderWidth: number,
-): boolean {
-  const nose = lm[NOSE];
-  if (!visible(nose, 0.3)) return false;
-  const noseAbove = midShoulderY - nose.y;
-  const ratio = noseAbove / shoulderWidth;
-  return ratio < 0.42 && noseAbove < 0.14;
-}
-
 export function isBodyPose(kind: GestureKind): kind is BodyPose {
   return (
     kind === 'armsUp' ||
     kind === 'armsOut' ||
     kind === 'handsOnHips' ||
     kind === 'clap' ||
-    kind === 'handsOnHead' ||
-    kind === 'nod'
+    kind === 'handsOnHead'
   );
 }
 

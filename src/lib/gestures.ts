@@ -4,7 +4,7 @@ import type { AssignableGesture } from './design-config';
 /**
  * 手势 / 姿势类型
  * - fist / palm / peace / point：手部动作
- * - armsUp / armsOut / handsOnHips / clap / handsOnHead / nod：简单身体姿势
+ * - armsUp / armsOut / handsOnHips / clap / handsOnHead：简单身体姿势
  * - partial：半握或不稳定，不触发
  * - none：未识别到可用动作
  */
@@ -49,8 +49,7 @@ export function isAssignableGesture(kind: GestureKind): kind is AssignableGestur
     kind === 'armsOut' ||
     kind === 'handsOnHips' ||
     kind === 'clap' ||
-    kind === 'handsOnHead' ||
-    kind === 'nod'
+    kind === 'handsOnHead'
   );
 }
 

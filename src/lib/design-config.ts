@@ -10,8 +10,7 @@ export type AssignableGesture =
   | 'armsOut'
   | 'handsOnHips'
   | 'clap'
-  | 'handsOnHead'
-  | 'nod';
+  | 'handsOnHead';
 
 /** 全部图片共用的效果 */
 export type PatternAction = 'rotate' | 'zoomIn' | 'zoomOut' | 'next';
@@ -44,7 +43,6 @@ export const GESTURE_OPTIONS: ReadonlyArray<{
   { id: 'handsOnHips', label: '双手叉腰', emoji: '叉腰', group: 'body' },
   { id: 'clap', label: '拍手', emoji: '👏', group: 'body' },
   { id: 'handsOnHead', label: '双手抱头', emoji: '🤯', group: 'body' },
-  { id: 'nod', label: '点头', emoji: '🙇', group: 'body' },
 ];
 
 export const HAND_GESTURE_OPTIONS = GESTURE_OPTIONS.filter(

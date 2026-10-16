@@ -316,8 +316,7 @@ export function DesignStudio({
                                 >
                                   {gesture.id === 'handsOnHips' ||
                                   gesture.id === 'armsOut' ||
-                                  gesture.id === 'handsOnHead' ||
-                                  gesture.id === 'nod' ? (
+                                  gesture.id === 'handsOnHead' ? (
                                     <BodyPoseIcon pose={gesture.id} />
                                   ) : (
                                     <span className="text-2xl leading-none">
@@ -387,9 +386,8 @@ function isGestureUsedByOther(
 function BodyPoseIcon({
   pose,
 }: {
-  pose: 'handsOnHips' | 'armsOut' | 'handsOnHead' | 'nod';
+  pose: 'handsOnHips' | 'armsOut' | 'handsOnHead';
 }) {
-  const headCy = pose === 'nod' ? 8.2 : 5.8;
   return (
     <svg
       className="size-7 shrink-0"
@@ -397,19 +395,15 @@ function BodyPoseIcon({
       aria-hidden
       fill="none"
     >
-      <circle cx="16" cy={headCy} r="3" fill="#ffe08a" />
+      <circle cx="16" cy="5.8" r="3" fill="#ffe08a" />
       <path
-        d={`M16 ${headCy + 3.6}v${pose === 'nod' ? 7.2 : 8.6}`}
+        d="M16 9.4v8.6"
         stroke="#ffe08a"
         strokeWidth="2.6"
         strokeLinecap="round"
       />
       <path
-        d={
-          pose === 'nod'
-            ? 'M16 18.5 11.5 28M16 18.5 20.5 28'
-            : 'M16 18 11 28M16 18 21 28'
-        }
+        d="M16 18 11 28M16 18 21 28"
         stroke="#ffe08a"
         strokeWidth="2.6"
         strokeLinecap="round"
@@ -470,29 +464,7 @@ function BodyPoseIcon({
           <circle cx="10.5" cy="5.2" r="1.7" fill="#c4b5fd" />
           <circle cx="21.5" cy="5.2" r="1.7" fill="#c4b5fd" />
         </>
-      ) : (
-        <>
-          {/* 点头：低头 + 自然垂臂 */}
-          <path
-            d="M16 13.5 11 17"
-            stroke="#38bdf8"
-            strokeWidth="2.4"
-            strokeLinecap="round"
-          />
-          <path
-            d="M16 13.5 21 17"
-            stroke="#38bdf8"
-            strokeWidth="2.4"
-            strokeLinecap="round"
-          />
-          <path
-            d="M14 4.2 16 8.2"
-            stroke="#38bdf8"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-        </>
-      )}
+      ) : null}
     </svg>
   );
 }

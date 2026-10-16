@@ -50,10 +50,10 @@ const MAX_SPIN_SPEED = 480;
 /** 无旋转手势时停住，不做默认自转 */
 const IDLE_SPIN_SPEED = 0;
 const HOLD_SPIN_SPEED = 90;
-const MIN_SCALE = 0.55;
-const MAX_SCALE = 1.85;
+const MIN_SCALE = 0.4;
+const MAX_SCALE = 2.4;
 /** 按住放大/缩小时每秒缩放变化量（持续渐变） */
-const ZOOM_SPEED = 0.72;
+const ZOOM_SPEED = 1.05;
 
 function friendlyError(error: unknown): string {
   if (error instanceof DOMException) {

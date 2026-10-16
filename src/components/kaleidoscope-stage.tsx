@@ -100,13 +100,13 @@ export function KaleidoscopeStage({
         const spinRad = (motionRef.current.spin * Math.PI) / 180;
         const zoom = Math.max(0.35, Math.min(2.8, motionRef.current.zoom));
         // 随旋转轻微平移取样点，花纹会「流动重组」，不像整图拧转
-        const driftX = Math.cos(spinRad * 0.65) * (28 + 40 * zoom);
-        const driftY = Math.sin(spinRad * 0.45) * (28 + 40 * zoom);
+        const driftX = Math.cos(spinRad * 0.65) * (28 + 36 * zoom);
+        const driftY = Math.sin(spinRad * 0.45) * (28 + 36 * zoom);
 
         const iw = img.naturalWidth;
         const ih = img.naturalHeight;
-        // 取样块要够大，扇形里能看到丰富细节
-        const baseW = radius * (1.55 + zoom * 0.55);
+        // 取样块随 zoom 明显变大/变小，孩子才能看出「放大/缩小」
+        const baseW = radius * (0.75 + zoom * 1.35);
         const baseH = (ih / iw) * baseW;
 
         for (let i = 0; i < SEGMENTS; i += 1) {

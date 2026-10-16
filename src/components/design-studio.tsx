@@ -315,7 +315,9 @@ export function DesignStudio({
                                   } ${usedElsewhere ? 'is-swap' : ''}`}
                                 >
                                   {gesture.id === 'handsOnHips' ||
-                                  gesture.id === 'armsOut' ? (
+                                  gesture.id === 'armsOut' ||
+                                  gesture.id === 'handsOnHead' ||
+                                  gesture.id === 'nod' ? (
                                     <BodyPoseIcon pose={gesture.id} />
                                   ) : (
                                     <span className="text-2xl leading-none">
@@ -382,7 +384,12 @@ function isGestureUsedByOther(
 }
 
 /** 身体姿势示意图（比 emoji 更像对应动作） */
-function BodyPoseIcon({ pose }: { pose: 'handsOnHips' | 'armsOut' }) {
+function BodyPoseIcon({
+  pose,
+}: {
+  pose: 'handsOnHips' | 'armsOut' | 'handsOnHead' | 'nod';
+}) {
+  const headCy = pose === 'nod' ? 8.2 : 5.8;
   return (
     <svg
       className="size-7 shrink-0"
@@ -390,22 +397,25 @@ function BodyPoseIcon({ pose }: { pose: 'handsOnHips' | 'armsOut' }) {
       aria-hidden
       fill="none"
     >
-      <circle cx="16" cy="5.8" r="3" fill="#ffe08a" />
+      <circle cx="16" cy={headCy} r="3" fill="#ffe08a" />
       <path
-        d="M16 9.4v8.6"
+        d={`M16 ${headCy + 3.6}v${pose === 'nod' ? 7.2 : 8.6}`}
         stroke="#ffe08a"
         strokeWidth="2.6"
         strokeLinecap="round"
       />
       <path
-        d="M16 18 11 28M16 18 21 28"
+        d={
+          pose === 'nod'
+            ? 'M16 18.5 11.5 28M16 18.5 20.5 28'
+            : 'M16 18 11 28M16 18 21 28'
+        }
         stroke="#ffe08a"
         strokeWidth="2.6"
         strokeLinecap="round"
       />
       {pose === 'armsOut' ? (
         <>
-          {/* T 字平举：双臂水平向两侧伸直 */}
           <path
             d="M16 12H4.5"
             stroke="#7dd3fc"
@@ -421,9 +431,8 @@ function BodyPoseIcon({ pose }: { pose: 'handsOnHips' | 'armsOut' }) {
           <circle cx="4.5" cy="12" r="1.7" fill="#7dd3fc" />
           <circle cx="27.5" cy="12" r="1.7" fill="#7dd3fc" />
         </>
-      ) : (
+      ) : pose === 'handsOnHips' ? (
         <>
-          {/* 叉腰：肘向外撑成菱形，手落在腰侧 */}
           <path
             d="M16 11.5 7.5 14.5 11.5 18.5"
             stroke="#fb923c"
@@ -440,6 +449,48 @@ function BodyPoseIcon({ pose }: { pose: 'handsOnHips' | 'armsOut' }) {
           />
           <circle cx="11.5" cy="18.5" r="1.7" fill="#fb923c" />
           <circle cx="20.5" cy="18.5" r="1.7" fill="#fb923c" />
+        </>
+      ) : pose === 'handsOnHead' ? (
+        <>
+          {/* 双手抱头：手落在头两侧 */}
+          <path
+            d="M16 11.5 9 8.5 10.5 5.2"
+            stroke="#c4b5fd"
+            strokeWidth="2.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M16 11.5 23 8.5 21.5 5.2"
+            stroke="#c4b5fd"
+            strokeWidth="2.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <circle cx="10.5" cy="5.2" r="1.7" fill="#c4b5fd" />
+          <circle cx="21.5" cy="5.2" r="1.7" fill="#c4b5fd" />
+        </>
+      ) : (
+        <>
+          {/* 点头：低头 + 自然垂臂 */}
+          <path
+            d="M16 13.5 11 17"
+            stroke="#38bdf8"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+          />
+          <path
+            d="M16 13.5 21 17"
+            stroke="#38bdf8"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+          />
+          <path
+            d="M14 4.2 16 8.2"
+            stroke="#38bdf8"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
         </>
       )}
     </svg>

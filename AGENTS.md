@@ -53,7 +53,7 @@ src/
 └── lib/
     ├── gesture-engine.ts            # Hand + Pose：初始化/回退/检测/骨架绘制
     ├── gestures.ts                  # 手势判定 classifyHand + 时序 GestureTracker
-    ├── poses.ts                     # 简单身体姿势（双手举起 / 双臂平举）
+    ├── poses.ts                     # 简单身体姿势（举手/平举/叉腰/拍手/抱头/点头）
     ├── patterns.ts                  # 上传图压缩（无预置；与手势一并存 localStorage）
     └── sound.ts                     # WebAudio 合成「啵」音效（无音频素材）
 ```

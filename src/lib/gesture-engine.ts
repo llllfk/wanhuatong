@@ -305,13 +305,11 @@ export class GestureEngine {
           ? '#fbbf24'
           : kind === 'armsOut'
             ? '#34d399'
-            : kind === 'armUpLeft'
-              ? '#60a5fa'
-              : kind === 'armUpRight'
-                ? '#c084fc'
-                : kind === 'handsOnHips'
-                  ? '#fb923c'
-                  : '#94a3b8';
+            : kind === 'handsOnHips'
+              ? '#fb923c'
+              : kind === 'clap'
+                ? '#f472b6'
+                : '#94a3b8';
       ctx.lineWidth = 5;
       ctx.strokeStyle = poseColor;
       ctx.fillStyle = poseColor;

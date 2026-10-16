@@ -17,9 +17,7 @@ import {
   ACTION_OPTIONS,
   actionLabel,
   findGestureConflict,
-  gesturesPhysicallyConflict,
   inferGestureMode,
-  isPalmZoomPair,
   optionsForAction,
   type AssignableGesture,
   type GestureOptionGroup,
@@ -316,9 +314,13 @@ export function DesignStudio({
                                     selected ? 'is-selected' : ''
                                   } ${usedElsewhere ? 'is-swap' : ''}`}
                                 >
-                                  <span className="text-2xl leading-none">
-                                    {gesture.emoji}
-                                  </span>
+                                  {gesture.id === 'handsOnHips' ? (
+                                    <HipsPoseIcon />
+                                  ) : (
+                                    <span className="text-2xl leading-none">
+                                      {gesture.emoji}
+                                    </span>
+                                  )}
                                   <span className="font-kid text-base">
                                     {gesture.label}
                                   </span>
@@ -373,18 +375,51 @@ function isGestureUsedByOther(
   currentAction: PatternAction,
   gesture: AssignableGesture,
 ): boolean {
-  return ACTION_OPTIONS.some((action) => {
-    if (action.id === currentAction) return false;
-    // palmZoom 放大/缩小成对：不算「被别处占用」
-    if (
-      gesture === 'palmZoom' &&
-      isPalmZoomPair(map) &&
-      (action.id === 'zoomIn' || action.id === 'zoomOut') &&
-      (currentAction === 'zoomIn' || currentAction === 'zoomOut')
-    ) {
-      return false;
-    }
-    return gesturesPhysicallyConflict(map[action.id], gesture);
-  });
+  return ACTION_OPTIONS.some(
+    (action) => action.id !== currentAction && map[action.id] === gesture,
+  );
+}
+
+/** 叉腰示意图：双手撑在腰侧，比通用 emoji 更像 */
+function HipsPoseIcon() {
+  return (
+    <svg
+      className="size-7 shrink-0"
+      viewBox="0 0 32 32"
+      aria-hidden
+      fill="none"
+    >
+      <circle cx="16" cy="6.5" r="3.2" fill="#ffe08a" />
+      <path
+        d="M16 10.2v8.2"
+        stroke="#ffe08a"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+      />
+      <path
+        d="M16 18.4 11.2 27M16 18.4 20.8 27"
+        stroke="#ffe08a"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+      />
+      {/* 双臂叉腰：肘外撑、手回腰侧 */}
+      <path
+        d="M16 12.2c-2.2 0-4.2 1.1-5.2 2.8L8.2 18"
+        stroke="#ff9ecd"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M16 12.2c2.2 0 4.2 1.1 5.2 2.8L23.8 18"
+        stroke="#ff9ecd"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="10.2" cy="16.6" r="1.5" fill="#ff9ecd" />
+      <circle cx="21.8" cy="16.6" r="1.5" fill="#ff9ecd" />
+    </svg>
+  );
 }
 

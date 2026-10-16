@@ -6,12 +6,10 @@ export type AssignableGesture =
   | 'palm'
   | 'peace'
   | 'point'
-  | 'palmZoom'
   | 'armsUp'
   | 'armsOut'
-  | 'armUpLeft'
-  | 'armUpRight'
-  | 'handsOnHips';
+  | 'handsOnHips'
+  | 'clap';
 
 /** 全部图片共用的效果 */
 export type PatternAction = 'rotate' | 'zoomIn' | 'zoomOut' | 'next';
@@ -39,17 +37,10 @@ export const GESTURE_OPTIONS: ReadonlyArray<{
   { id: 'palm', label: '张开手掌', emoji: '🖐️', group: 'hand' },
   { id: 'peace', label: '比耶', emoji: '✌️', group: 'hand' },
   { id: 'point', label: '伸出一根手指', emoji: '☝️', group: 'hand' },
-  {
-    id: 'palmZoom',
-    label: '手掌推近/拉远',
-    emoji: '👐',
-    group: 'hand',
-  },
   { id: 'armsUp', label: '双手举起', emoji: '🙌', group: 'body' },
   { id: 'armsOut', label: '双臂平举', emoji: '🤸', group: 'body' },
-  { id: 'armUpLeft', label: '举起左手', emoji: '👈', group: 'body' },
-  { id: 'armUpRight', label: '举起右手', emoji: '👉', group: 'body' },
-  { id: 'handsOnHips', label: '双手叉腰', emoji: '🧍', group: 'body' },
+  { id: 'handsOnHips', label: '双手叉腰', emoji: '叉腰', group: 'body' },
+  { id: 'clap', label: '拍手', emoji: '👏', group: 'body' },
 ];
 
 export const HAND_GESTURE_OPTIONS = GESTURE_OPTIONS.filter(
@@ -76,15 +67,16 @@ export function createGesturesForMode(
     return {
       rotate: 'armsOut',
       zoomIn: 'armsUp',
-      zoomOut: 'armUpLeft',
-      next: 'handsOnHips',
+      zoomOut: 'handsOnHips',
+      next: 'clap',
     };
   }
+  // 默认：张手一直放大，握拳一直缩小；左右挥手旋转
   return {
-    rotate: 'palm',
-    zoomIn: 'peace',
-    zoomOut: 'point',
-    next: 'fist',
+    rotate: 'peace',
+    zoomIn: 'palm',
+    zoomOut: 'fist',
+    next: 'point',
   };
 }
 
@@ -111,18 +103,18 @@ export const ACTION_OPTIONS: ReadonlyArray<{
   label: string;
   hint: string;
 }> = [
-  { id: 'rotate', label: '翻转 / 旋转', hint: '所有图片共用：图案转起来' },
+  { id: 'rotate', label: '翻转 / 旋转', hint: '做这个动作，图案转起来' },
   {
     id: 'zoomIn',
     label: '放大',
-    hint: '渐渐变大；可选「手掌推近/拉远」：推近放大',
+    hint: '按住这个动作，图案一直变大',
   },
   {
     id: 'zoomOut',
     label: '缩小',
-    hint: '渐渐变小；选「手掌推近/拉远」时与放大成对：拉远缩小',
+    hint: '按住这个动作，图案一直变小',
   },
-  { id: 'next', label: '换下一张', hint: '所有图片共用：换成下一张照片' },
+  { id: 'next', label: '换下一张', hint: '做这个动作，换成下一张照片' },
 ];
 
 const STORAGE_KEY = 'kaleido-design-v2';
@@ -180,7 +172,6 @@ export function loadStudio(): PersistedStudio {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<PersistedStudio>;
-      // 上传图不跨人复用：只恢复手势，图案始终为空
       return {
         version: 2,
         gestures: normalizeGestures(parsed.gestures),
@@ -188,7 +179,6 @@ export function loadStudio(): PersistedStudio {
       };
     }
 
-    // 兼容旧版：只恢复第一套手势，图案需重新上传
     const legacy = window.localStorage.getItem(LEGACY_STORAGE_KEY);
     if (legacy) {
       const parsed = JSON.parse(legacy) as unknown;
@@ -225,7 +215,6 @@ export function saveStudio(
   _patterns?: KaleidoscopePattern[],
 ): void {
   if (typeof window === 'undefined') return;
-  // 只持久化手势；上传图仅本次会话内存，避免下一位用户看到上一人的照片
   const payload: PersistedStudio = {
     version: 2,
     gestures: normalizeGestures(gestures),
@@ -241,8 +230,7 @@ export function saveStudio(
 /** @deprecated 使用 saveStudio */
 export function saveDesign(config: PatternGestureMap): void {
   if (typeof window === 'undefined') return;
-  const prev = loadStudio();
-  saveStudio(config, prev.patterns);
+  saveStudio(config);
 }
 
 function isAssignable(value: unknown): value is AssignableGesture {
@@ -251,23 +239,7 @@ function isAssignable(value: unknown): value is AssignableGesture {
   );
 }
 
-/** 张开手掌 与 手掌推近/拉远 都需要张手，不能同时占用 */
-export function gesturesPhysicallyConflict(
-  a: AssignableGesture,
-  b: AssignableGesture,
-): boolean {
-  if (a === b) return true;
-  return (
-    (a === 'palm' && b === 'palmZoom') || (a === 'palmZoom' && b === 'palm')
-  );
-}
-
-/** 手掌推近/拉远：放大+缩小成对共用，不算冲突 */
-export function isPalmZoomPair(map: PatternGestureMap): boolean {
-  return map.zoomIn === 'palmZoom' && map.zoomOut === 'palmZoom';
-}
-
-/** 同一套映射里，同一手势不能绑两个效果（palmZoom 放大缩小成对除外） */
+/** 同一套映射里，同一动作不能绑两个效果 */
 export function findGestureConflict(
   map: PatternGestureMap,
 ): PatternAction[] | null {
@@ -277,34 +249,12 @@ export function findGestureConflict(
   }));
   for (let i = 0; i < entries.length; i += 1) {
     for (let j = i + 1; j < entries.length; j += 1) {
-      const a = entries[i];
-      const b = entries[j];
-      if (
-        a.gesture === 'palmZoom' &&
-        b.gesture === 'palmZoom' &&
-        ((a.action === 'zoomIn' && b.action === 'zoomOut') ||
-          (a.action === 'zoomOut' && b.action === 'zoomIn'))
-      ) {
-        continue;
-      }
-      if (gesturesPhysicallyConflict(a.gesture, b.gesture)) {
-        return [a.action, b.action];
+      if (entries[i].gesture === entries[j].gesture) {
+        return [entries[i].action, entries[j].action];
       }
     }
   }
   return null;
-}
-
-/** 某个动作可选的手势列表（palmZoom 仅用于放大/缩小） */
-export function optionsForAction(
-  action: PatternAction,
-  mode: GestureOptionGroup,
-): typeof GESTURE_OPTIONS {
-  const base = mode === 'body' ? BODY_POSE_OPTIONS : HAND_GESTURE_OPTIONS;
-  if (mode === 'hand' && (action === 'zoomIn' || action === 'zoomOut')) {
-    return base;
-  }
-  return base.filter((item) => item.id !== 'palmZoom');
 }
 
 export function gestureLabel(id: AssignableGesture): string {
@@ -313,4 +263,11 @@ export function gestureLabel(id: AssignableGesture): string {
 
 export function actionLabel(id: PatternAction): string {
   return ACTION_OPTIONS.find((item) => item.id === id)?.label ?? id;
+}
+
+export function optionsForAction(
+  _action: PatternAction,
+  mode: GestureOptionGroup,
+): typeof GESTURE_OPTIONS {
+  return mode === 'body' ? BODY_POSE_OPTIONS : HAND_GESTURE_OPTIONS;
 }

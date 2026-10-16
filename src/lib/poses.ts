@@ -5,7 +5,7 @@ import type { GestureKind } from './gestures';
 /** 身体姿势（可分配） */
 export type BodyPose = Extract<
   AssignableGesture,
-  'armsUp' | 'armsOut' | 'armUpLeft' | 'armUpRight' | 'handsOnHips'
+  'armsUp' | 'armsOut' | 'handsOnHips' | 'clap'
 >;
 
 const L_SHOULDER = 11;
@@ -23,17 +23,18 @@ function visible(p: NormalizedLandmark | undefined, min = 0.45): boolean {
   return v === undefined || v >= min;
 }
 
-function dist(
-  a: NormalizedLandmark,
-  b: NormalizedLandmark,
-): number {
+function dist(a: NormalizedLandmark, b: NormalizedLandmark): number {
   const dx = a.x - b.x;
   const dy = a.y - b.y;
   return Math.sqrt(dx * dx + dy * dy);
 }
 
 /**
- * 根据上半身关键点做简单姿势判定（关键点左右为人的解剖左右，与自拍镜像无关）。
+ * 简单身体姿势（不分左右手）：
+ * - armsUp：双手举起
+ * - armsOut：双臂平举
+ * - handsOnHips：双手叉腰
+ * - clap：双手在胸前合拢（拍手）——比摇头更稳、更不易误触
  */
 export function classifyPoseRaw(
   lm: NormalizedLandmark[] | undefined,
@@ -51,6 +52,15 @@ export function classifyPoseRaw(
   const shoulderWidth = Math.max(0.08, Math.abs(rs.x - ls.x));
   const midShoulderY = (ls.y + rs.y) / 2;
   const midShoulderX = (ls.x + rs.x) / 2;
+
+  // 拍手：双腕靠得很近，高度在胸腹之间（优先于其它姿势）
+  const wristsClose = dist(lw, rw) < shoulderWidth * 0.55;
+  const clapHeight =
+    lw.y > midShoulderY - 0.08 &&
+    rw.y > midShoulderY - 0.08 &&
+    lw.y < midShoulderY + 0.28 &&
+    rw.y < midShoulderY + 0.28;
+  if (wristsClose && clapHeight) return 'clap';
 
   const leftUp = lw.y < ls.y - 0.06;
   const rightUp = rw.y < rs.y - 0.06;
@@ -74,7 +84,6 @@ export function classifyPoseRaw(
     const leftOnHip = nearHip(lw, lh) && lw.y > ls.y + 0.02;
     const rightOnHip = nearHip(rw, rh) && rw.y > rs.y + 0.02;
     if (leftOnHip && rightOnHip) {
-      // 肘略向外更像叉腰（可选放宽）
       const le = lm[L_ELBOW];
       const re = lm[R_ELBOW];
       const elbowsOk =
@@ -86,12 +95,6 @@ export function classifyPoseRaw(
     }
   }
 
-  // 单手举起：一侧明显高于肩，另一侧明显放下
-  const leftDown = lw.y > ls.y - 0.02;
-  const rightDown = rw.y > rs.y - 0.02;
-  if (leftUp && rightDown) return 'armUpLeft';
-  if (rightUp && leftDown) return 'armUpRight';
-
   return 'none';
 }
 
@@ -99,9 +102,8 @@ export function isBodyPose(kind: GestureKind): kind is BodyPose {
   return (
     kind === 'armsUp' ||
     kind === 'armsOut' ||
-    kind === 'armUpLeft' ||
-    kind === 'armUpRight' ||
-    kind === 'handsOnHips'
+    kind === 'handsOnHips' ||
+    kind === 'clap'
   );
 }
 

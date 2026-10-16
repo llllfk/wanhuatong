@@ -22,9 +22,7 @@ import {
   createGesturesForMode,
   gestureGroupOf,
   gestureLabel,
-  gesturesPhysicallyConflict,
   inferGestureMode,
-  isPalmZoomPair,
   loadStudio,
   saveStudio,
   type AssignableGesture,
@@ -56,10 +54,6 @@ const MIN_SCALE = 0.55;
 const MAX_SCALE = 1.85;
 /** 按住放大/缩小时每秒缩放变化量（持续渐变） */
 const ZOOM_SPEED = 0.72;
-/** 手掌推近/拉远：approachSpeed → 缩放速率 */
-const ZOOM_APPROACH_GAIN = 1.35;
-const ZOOM_APPROACH_DEADZONE = 0.06;
-const MAX_APPROACH_ZOOM_RATE = 1.1;
 
 function friendlyError(error: unknown): string {
   if (error instanceof DOMException) {
@@ -158,25 +152,13 @@ export function KaleidoscopeApp() {
       triggered: AssignableGesture | null;
     }) => {
       const map = gesturesRef.current;
-      const palmZoom = isPalmZoomPair(map);
 
       const isRotateGesture = frame.gesture === map.rotate;
-      const isZoomIn = !palmZoom && frame.gesture === map.zoomIn;
-      const isZoomOut = !palmZoom && frame.gesture === map.zoomOut;
-      const isPalmZooming = palmZoom && frame.gesture === 'palm';
+      const isZoomIn = frame.gesture === map.zoomIn;
+      const isZoomOut = frame.gesture === map.zoomOut;
 
-      // 放大/缩小只缩放，不附带旋转（避免被当成「只会转」）
-      if (isPalmZooming) {
-        const speed = frame.approachSpeed;
-        if (Math.abs(speed) < ZOOM_APPROACH_DEADZONE) {
-          zoomRateRef.current = 0;
-        } else {
-          zoomRateRef.current = Math.max(
-            -MAX_APPROACH_ZOOM_RATE,
-            Math.min(MAX_APPROACH_ZOOM_RATE, speed * ZOOM_APPROACH_GAIN),
-          );
-        }
-      } else if (isZoomIn) {
+      // 按住对应动作：一直放大 / 一直缩小（松开即停）
+      if (isZoomIn) {
         zoomRateRef.current = ZOOM_SPEED;
       } else if (isZoomOut) {
         zoomRateRef.current = -ZOOM_SPEED;
@@ -206,12 +188,7 @@ export function KaleidoscopeApp() {
         if (frame.triggered === map.next) {
           nextPattern();
           setBadgeText(`${gestureLabel(frame.triggered)} · 换图`);
-        } else if (
-          frame.triggered === map.rotate &&
-          map.rotate !== 'palm' &&
-          map.rotate !== 'palmZoom'
-        ) {
-          // 离散触发时也给一点甩动感
+        } else if (frame.triggered === map.rotate && map.rotate !== 'palm') {
           velocityRef.current += 70;
           setBadgeText(`${gestureLabel(frame.triggered)} · 翻转`);
         }
@@ -221,9 +198,6 @@ export function KaleidoscopeApp() {
         lastGestureRef.current = frame.gesture;
         if (isRotateGesture && frame.gesture !== 'none') {
           setBadgeText(`${gestureLabel(map.rotate)} · 旋转中`);
-        } else if (isPalmZooming) {
-          setBadgeText('手掌推近放大 · 拉远缩小');
-          playPop();
         } else if (isZoomIn) {
           setBadgeText(`${gestureLabel(map.zoomIn)} · 放大中`);
           playPop();
@@ -231,13 +205,6 @@ export function KaleidoscopeApp() {
           setBadgeText(`${gestureLabel(map.zoomOut)} · 缩小中`);
           playPop();
         }
-      } else if (
-        isPalmZooming &&
-        Math.abs(frame.approachSpeed) >= ZOOM_APPROACH_DEADZONE
-      ) {
-        const tip =
-          frame.approachSpeed > 0 ? '推近 · 放大中' : '拉远 · 缩小中';
-        setBadgeText((prev) => (prev === tip ? prev : tip));
       }
     },
     [nextPattern],
@@ -385,84 +352,13 @@ export function KaleidoscopeApp() {
       setGestures((prev) => {
         const mode = gestureGroupOf(prev.rotate);
         if (gestureGroupOf(gestureId) !== mode) return prev;
-
-        // 手掌推近/拉远：放大+缩小成对绑定
-        if (
-          gestureId === 'palmZoom' &&
-          (action === 'zoomIn' || action === 'zoomOut')
-        ) {
-          if (isPalmZoomPair(prev)) return prev;
-          const next: PatternGestureMap = {
-            ...prev,
-            zoomIn: 'palmZoom',
-            zoomOut: 'palmZoom',
-          };
-          // 旋转/换图若占用张手相关，让出位置
-          const freeHand: AssignableGesture[] = [
-            'fist',
-            'peace',
-            'point',
-            'palm',
-          ];
-          for (const key of ['rotate', 'next'] as const) {
-            if (
-              next[key] === 'palmZoom' ||
-              gesturesPhysicallyConflict(next[key], 'palmZoom')
-            ) {
-              const used = new Set<AssignableGesture>([
-                next.rotate,
-                next.next,
-                'palmZoom',
-              ]);
-              const pick =
-                freeHand.find((id) => !used.has(id) && id !== 'palm') ??
-                freeHand.find((id) => !used.has(id)) ??
-                'fist';
-              next[key] = pick;
-              used.add(pick);
-            }
-          }
-          return next;
-        }
-
         if (prev[action] === gestureId) return prev;
-
-        // 从 palmZoom 成对里改掉其中一个 → 拆对
-        let next: PatternGestureMap = { ...prev, [action]: gestureId };
-        if (
-          (action === 'zoomIn' || action === 'zoomOut') &&
-          prev.zoomIn === 'palmZoom' &&
-          prev.zoomOut === 'palmZoom'
-        ) {
-          const other: PatternAction =
-            action === 'zoomIn' ? 'zoomOut' : 'zoomIn';
-          const candidates: AssignableGesture[] = [
-            'peace',
-            'point',
-            'fist',
-            'palm',
-          ];
-          const used = new Set<AssignableGesture>([
-            gestureId,
-            next.rotate,
-            next.next,
-          ]);
-          next[other] =
-            candidates.find(
-              (id) =>
-                !used.has(id) && !gesturesPhysicallyConflict(id, gestureId),
-            ) ?? 'point';
-        }
-
         const occupiedBy = (
           ['rotate', 'zoomIn', 'zoomOut', 'next'] as PatternAction[]
-        ).find(
-          (key) =>
-            key !== action &&
-            gesturesPhysicallyConflict(next[key], gestureId),
-        );
+        ).find((key) => key !== action && prev[key] === gestureId);
+        const next = { ...prev, [action]: gestureId };
         if (occupiedBy) {
-          next = { ...next, [occupiedBy]: prev[action] };
+          next[occupiedBy] = prev[action];
         }
         return next;
       });
@@ -646,10 +542,9 @@ export function KaleidoscopeApp() {
                 <Hand className="size-6 shrink-0" />
                 <span>
                   共用：{gestureLabel(currentMap.rotate)}转 ·{' '}
-                  {isPalmZoomPair(currentMap)
-                    ? '手掌推近放大/拉远缩小'
-                    : `${gestureLabel(currentMap.zoomIn)}放大 · ${gestureLabel(currentMap.zoomOut)}缩小`}{' '}
-                  · {gestureLabel(currentMap.next)}换图
+                  {gestureLabel(currentMap.zoomIn)}放大 ·{' '}
+                  {gestureLabel(currentMap.zoomOut)}缩小 ·{' '}
+                  {gestureLabel(currentMap.next)}换图
                 </span>
               </div>
             )}

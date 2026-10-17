@@ -40,6 +40,8 @@ import {
   isSoundMuted,
   playPop,
   setSoundMuted,
+  startBgm,
+  stopBgm,
 } from '@/lib/sound';
 
 type AppMode = 'design' | 'run';
@@ -270,6 +272,8 @@ export function KaleidoscopeApp() {
     setHintVisible(true);
     setBadgeText(null);
     initSound();
+    // 须在点击「运行」的调用栈里尽早播，iPad Safari 才放行
+    startBgm();
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -320,6 +324,7 @@ export function KaleidoscopeApp() {
       setRunPhase('running');
     } catch (error) {
       console.error('[Kaleidoscope] 启动失败：', error);
+      stopBgm();
       cleanupCamera();
       runPhaseRef.current = 'error';
       setErrorMessage(friendlyError(error));
@@ -328,6 +333,7 @@ export function KaleidoscopeApp() {
   }, [cleanupCamera, handleFrame]);
 
   const backToDesign = useCallback(() => {
+    stopBgm();
     cleanupCamera();
     rotatingRef.current = false;
     targetVelocityRef.current = IDLE_SPIN_SPEED;
@@ -418,6 +424,7 @@ export function KaleidoscopeApp() {
   useEffect(() => {
     setSoundMuted(isSoundMuted());
     return () => {
+      stopBgm();
       cleanupCamera();
     };
   }, [cleanupCamera]);

@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>手势万花筒 · 怎么搭、怎么跑起来</title>
+    <link rel="preconnect" href="https://fonts.googleapis.cn" />
+    <link
+      href="https://fonts.googleapis.cn/css2?family=ZCOOL+KuaiLe&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #160f2e;
+        --bg2: #2a1a55;
+        --amber: #ffc23f;
+        --pink: #ff5fa8;
+        --violet: #9b6bff;
+        --cyan: #43e7e0;
+        --cream: #fff7e8;
+        --card: rgba(255, 255, 255, 0.08);
+        --line: rgba(255, 255, 255, 0.18);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--cream);
+        font-family: 'ZCOOL KuaiLe', 'PingFang SC', 'Microsoft YaHei',
+          sans-serif;
+        background:
+          radial-gradient(
+            900px 500px at 10% -10%,
+            rgba(255, 95, 168, 0.28),
+            transparent 55%
+          ),
+          radial-gradient(
+            700px 420px at 95% 5%,
+            rgba(67, 231, 224, 0.18),
+            transparent 50%
+          ),
+          radial-gradient(
+            800px 480px at 70% 100%,
+            rgba(155, 107, 255, 0.25),
+            transparent 55%
+          ),
+          linear-gradient(165deg, var(--bg), var(--bg2) 55%, #1a1038);
+        line-height: 1.7;
+      }
+
+      .wrap {
+        width: min(880px, calc(100% - 2rem));
+        margin: 0 auto;
+        padding: 2.4rem 0 3.5rem;
+      }
+
+      header {
+        text-align: center;
+        padding: 1.5rem 0.5rem 2rem;
+      }
+
+      .badge {
+        display: inline-block;
+        padding: 0.35rem 0.9rem;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.1);
+        margin-bottom: 0.9rem;
+      }
+
+      h1 {
+        margin: 0 0 0.7rem;
+        font-size: clamp(2rem, 5.5vw, 3rem);
+        line-height: 1.25;
+        background: linear-gradient(
+          110deg,
+          var(--amber),
+          #ff8a5c,
+          var(--pink),
+          var(--violet)
+        );
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+
+      .lead {
+        max-width: 34em;
+        margin: 0 auto;
+        font-size: 1.15rem;
+        color: rgba(255, 247, 232, 0.9);
+      }
+
+      section {
+        margin: 1.1rem 0;
+        padding: 1.35rem 1.4rem 1.45rem;
+        border-radius: 28px;
+        background: var(--card);
+        border: 1px solid var(--line);
+      }
+
+      h2 {
+        margin: 0 0 0.75rem;
+        font-size: 1.5rem;
+        color: var(--amber);
+      }
+
+      p,
+      li {
+        font-size: 1.08rem;
+        color: rgba(255, 247, 232, 0.92);
+      }
+
+      p {
+        margin: 0.55rem 0;
+      }
+
+      ol,
+      ul {
+        margin: 0.35rem 0 0;
+        padding-left: 1.3rem;
+      }
+
+      li + li {
+        margin-top: 0.4rem;
+      }
+
+      .steps {
+        display: grid;
+        gap: 0.8rem;
+        margin-top: 0.8rem;
+      }
+
+      .step {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 0.8rem;
+        padding: 0.9rem 1rem;
+        border-radius: 20px;
+        background: rgba(0, 0, 0, 0.18);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .num {
+        width: 2.15rem;
+        height: 2.15rem;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: linear-gradient(135deg, var(--amber), var(--pink));
+        color: #2a1540;
+        font-size: 1.1rem;
+      }
+
+      .step strong {
+        display: block;
+        margin-bottom: 0.15rem;
+        font-size: 1.12rem;
+      }
+
+      .note {
+        margin-top: 0.85rem;
+        padding: 0.85rem 1rem;
+        border-radius: 16px;
+        background: rgba(255, 194, 63, 0.12);
+        border: 1px solid rgba(255, 194, 63, 0.35);
+        color: #ffe7a8;
+      }
+
+      .ok {
+        background: rgba(67, 231, 224, 0.12);
+        border-color: rgba(67, 231, 224, 0.35);
+        color: #c8fffb;
+      }
+
+      .file-list {
+        margin: 0.7rem 0 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .file-list li {
+        display: grid;
+        grid-template-columns: minmax(7.5rem, auto) 1fr;
+        gap: 0.55rem 0.85rem;
+        padding: 0.65rem 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        font-size: 1.02rem;
+      }
+
+      .file-list code {
+        color: var(--cyan);
+        font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+        font-size: 0.92rem;
+        word-break: break-all;
+      }
+
+      pre.code {
+        margin: 0.85rem 0 0.3rem;
+        padding: 0.95rem 1rem;
+        border-radius: 16px;
+        background: rgba(0, 0, 0, 0.35);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        overflow-x: auto;
+        font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+        font-size: 0.88rem;
+        line-height: 1.55;
+        color: #e8fff9;
+      }
+
+      footer {
+        text-align: center;
+        margin-top: 1.8rem;
+        color: rgba(255, 247, 232, 0.5);
+        font-size: 0.95rem;
+      }
+
+      @media print {
+        body {
+          background: #fff;
+          color: #222;
+        }
+        section,
+        .step,
+        .note {
+          background: #f6f6f6;
+          border-color: #ddd;
+          color: #222;
+        }
+        h1,
+        h2,
+        p,
+        li,
+        .lead {
+          color: #222 !important;
+          -webkit-text-fill-color: initial;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <div class="badge">给客户看的搭建说明</div>
+        <h1>这个万花筒是怎么搭起来的</h1>
+        <p class="lead">
+          用大白话讲清楚：它不是 App，是一个网页；怎么做出来的、怎么放到网上、客户怎么打开就能用。
+        </p>
+      </header>
+
+      <section>
+        <h2>一句话先说清</h2>
+        <p>
+          我们做的是一个<strong>网页程序</strong>。大人把链接发给客户，客户用
+          <strong>iPad 自带的浏览器（Safari）</strong>打开，点一下允许摄像头，就能玩。
+        </p>
+        <p>
+          <strong>不上架苹果应用商店</strong>，也不用装什么编程积木软件。换一批孩子、换一台
+          iPad，只要打开同一个链接就行。
+        </p>
+      </section>
+
+      <section>
+        <h2>整体是怎么搭的</h2>
+        <div class="steps">
+          <div class="step">
+            <div class="num">1</div>
+            <div>
+              <strong>先做出网页</strong>
+              先做成一个可在手机 / 平板浏览器里打开的网页，把万花筒画面、上传照片、选动作、开摄像头这些功能都写好。
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">2</div>
+            <div>
+              <strong>再放到网上</strong>
+              开发完成后，把网页<strong>发布上线</strong>。上线之后会得到一个可以打开的网址（链接）。
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">3</div>
+            <div>
+              <strong>最后发给客户用</strong>
+              把这个链接发给老师 / 机构。他们在 iPad 上打开就能用，不用再装 App。
+            </div>
+          </div>
+        </div>
+        <p class="note">
+          注意：做好代码<strong>不会自动上网</strong>。只有明确「发布 / 上线」之后，客户才能用正式链接打开。
+        </p>
+      </section>
+
+      <section>
+        <h2>客户那边怎么运行起来</h2>
+        <ol>
+          <li>收到我们发的网页链接。</li>
+          <li>用 iPad 的 Safari 打开（建议横着拿）。</li>
+          <li>第一次会问「要不要用摄像头」，点<strong>允许</strong>。</li>
+          <li>先上传几张照片、选好动作规则，再点「运行」开始表演。</li>
+        </ol>
+        <p class="note ok">
+          想更像 App：在 Safari 里用「添加到主屏幕」，以后桌面点一下图标就能进。
+        </p>
+      </section>
+
+      <section>
+        <h2>为什么必须用「安全链接」</h2>
+        <p>
+          要用摄像头，浏览器规定必须是<strong>带锁的安全网址</strong>（地址一般以
+          https 开头）。我们上线后的正式链接就是这种。
+        </p>
+        <p>
+          如果用普通不安全的地址，或者在预览小窗口里试，摄像头有时开不了——<strong>以发布后的正式链接、在真机
+          iPad 上打开为准</strong>。
+        </p>
+      </section>
+
+      <section>
+        <h2>画面识别跑在哪里</h2>
+        <p>
+          孩子对着摄像头做动作时，识别是在<strong>这台 iPad 自己里面</strong>完成的。摄像头画面<strong>不会传到我们服务器</strong>，也不会拿去存档。
+        </p>
+        <p>
+          上传的照片也只是<strong>这一次打开网页时用</strong>，关掉页面、换人再开，上一组的图不会还挂在上面。
+        </p>
+      </section>
+
+      <section>
+        <h2>代码大概长什么样（大白话）</h2>
+        <p>
+          整个项目就是一堆网页文件。打开电脑上的项目文件夹，最要紧的几块可以这么理解：
+        </p>
+        <ul class="file-list">
+          <li>
+            <code>设计页</code>
+            <span>孩子上传照片、选「用手势」还是「用身体」、给四种效果绑动作的地方。</span>
+          </li>
+          <li>
+            <code>运行页</code>
+            <span>点「运行」之后：开摄像头、认动作、驱动万花筒画面转起来。</span>
+          </li>
+          <li>
+            <code>万花筒画面</code>
+            <span>负责把照片折成一圈圈对称花纹；旋转、放大、缩小都在这里画出来。</span>
+          </li>
+          <li>
+            <code>认手 / 认姿势</code>
+            <span>看摄像头里的手或身体，判断现在是握拳、举手还是叉腰等。</span>
+          </li>
+          <li>
+            <code>规则配置</code>
+            <span>记下「哪个动作管放大、哪个管换图」；动作规则会记在这台 iPad 自己的浏览器里。</span>
+          </li>
+        </ul>
+        <p style="margin-top: 0.9rem">
+          程序跑起来时，大致就是这么一条线（不用记名词，看流程就行）：
+        </p>
+        <pre class="code">打开网页
+  → 设计页：上传照片 + 选动作规则
+  → 点「运行」
+  → 打开摄像头
+  → 本机认出手势 / 身体姿势
+  → 按规则：转 / 放大 / 缩小 / 换图
+  → 画到万花筒画面上</pre>
+        <p>
+          以后如果要加一个新姿势，主要是改「认姿势」那一块，再在设计页里多给一个可选按钮；改完重新发布，客户刷新就能用。
+        </p>
+        <p class="note">
+          代码放在我们这边的项目仓库里维护。客户平时<strong>不用碰代码</strong>，只要打开链接就行。
+        </p>
+      </section>
+
+      <section>
+        <h2>以后要改功能怎么办</h2>
+        <ol>
+          <li>在项目里改好内容（比如加姿势、改默认规则）。</li>
+          <li>改完后再<strong>发布一次</strong>。</li>
+          <li>客户刷新网页（或重新打开链接）就能用到新版本。</li>
+        </ol>
+        <p>
+          平时几个客户共用同一个链接就够了。如果以后要绑自己的域名，也可以再加，但不影响现在先用正式链接开玩。
+        </p>
+      </section>
+
+      <section>
+        <h2>和「装 App / 用积木课」有什么不一样</h2>
+        <ul>
+          <li><strong>不是</strong>苹果商店里的 App，不用审核上架、不用更新商店版本。</li>
+          <li><strong>不是</strong> Scratch 那种积木课，孩子不用搭积木，打开网页就能玩。</li>
+          <li>维护简单：我们改网页 → 发布 → 客户打开链接就是最新版。</li>
+        </ul>
+      </section>
+
+      <footer>
+        手势互动万花筒 · 搭建与运行说明（给客户）
+      </footer>
+    </div>
+  </body>
+</html>

@@ -1,11 +1,14 @@
 /**
- * 极轻微的 WebAudio 合成音效，无需任何音频素材。
- * AudioContext 必须在用户手势（点击「开始玩耍」）中创建/恢复，
- * 因此由组件在点击时调用 initSound()。
+ * 音效 + 运行背景音乐。
+ * AudioContext / Audio 播放须在用户点击「运行」的手势里启动。
  */
 
 let audioContext: AudioContext | null = null;
 let muted = false;
+let bgm: HTMLAudioElement | null = null;
+let bgmWanted = false;
+
+const BGM_SRC = '/audio/zhake-xingxing.mp3';
 
 type AudioContextCtor = typeof AudioContext;
 
@@ -32,10 +35,44 @@ export function initSound(): void {
 
 export function setSoundMuted(value: boolean): void {
   muted = value;
+  if (bgm) {
+    bgm.muted = value;
+    if (!value && bgmWanted && bgm.paused) {
+      void bgm.play().catch(() => undefined);
+    }
+  }
 }
 
 export function isSoundMuted(): boolean {
   return muted;
+}
+
+/** 运行阶段循环播放背景音乐（须在用户点击调用栈内尽早调用） */
+export function startBgm(): void {
+  if (typeof window === 'undefined') return;
+  bgmWanted = true;
+  if (!bgm) {
+    bgm = new Audio(BGM_SRC);
+    bgm.loop = true;
+    bgm.preload = 'auto';
+    bgm.volume = 0.55;
+    // iPad Safari 上 loop 偶发失效，播完再手动重开
+    bgm.addEventListener('ended', () => {
+      if (!bgmWanted || !bgm) return;
+      bgm.currentTime = 0;
+      void bgm.play().catch(() => undefined);
+    });
+  }
+  bgm.loop = true;
+  bgm.muted = muted;
+  void bgm.play().catch(() => undefined);
+}
+
+export function stopBgm(): void {
+  bgmWanted = false;
+  if (!bgm) return;
+  bgm.pause();
+  bgm.currentTime = 0;
 }
 
 /** 切换图案时的「啵」一声：音高快速下滑的正弦短音 */
